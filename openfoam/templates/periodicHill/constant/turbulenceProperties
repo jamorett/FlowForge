@@ -1,0 +1,16 @@
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      turbulenceProperties;
+}
+simulationType  RAS;
+RAS
+{
+    RASModel        kOmegaSST;
+    turbulence      on;
+    printCoeffs     on;
+    // Standard SST coefficients (do not modify per plan S1 guardrails):
+    // betaStar 0.09, sigmaK 0.85, sigmaOmega 0.5, beta1 0.075
+}

@@ -1,0 +1,9 @@
+role: analyst
+version: 1
+model: muse-spark-1.3
+schema: AnalysisReport
+risk_audit: required
+prompt: |
+  Diagnose where and why the candidate fails from error maps and
+  profiles. Propose the next hypothesis. Include risk_audit.
+  Output JSON only.

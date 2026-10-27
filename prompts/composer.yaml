@@ -1,0 +1,8 @@
+role: composer
+version: 1
+model: muse-spark-1.3
+schema: CompositionPlan
+risk_audit: required
+prompt: |
+  Combine surviving modules with sigmoid gates. Every gate pays
+  +16 bits description length. Include risk_audit. Output JSON only.

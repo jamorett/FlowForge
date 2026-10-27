@@ -1,0 +1,53 @@
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      blockMeshDict;
+}
+// Periodic hills placeholder mesh (flat walls; hill profile via
+// openfoam/meshing/hill_geometry.py in S1 refinement).
+// Streamwise (x) and spanwise (z) boundaries are cyclic PAIRS:
+// each patch names the other as neighbourPatch. Wall patches are y faces.
+convertToMeters 1;
+vertices
+(
+    (0 0 0) (9 0 0) (9 3.036 0) (0 3.036 0)
+    (0 0 0.1) (9 0 0.1) (9 3.036 0.1) (0 3.036 0.1)
+);
+blocks
+(
+    hex (0 1 2 3 4 5 6 7) (90 30 1) simpleGrading (1 1 1)
+);
+boundary
+(
+    walls
+    {
+        type wall;
+        faces ((0 1 5 4) (3 2 6 7));
+    }
+    cyclicX1
+    {
+        type cyclic;
+        neighbourPatch cyclicX2;
+        faces ((0 3 7 4));
+    }
+    cyclicX2
+    {
+        type cyclic;
+        neighbourPatch cyclicX1;
+        faces ((1 2 6 5));
+    }
+    cyclicZ1
+    {
+        type cyclic;
+        neighbourPatch cyclicZ2;
+        faces ((0 1 2 3));
+    }
+    cyclicZ2
+    {
+        type cyclic;
+        neighbourPatch cyclicZ1;
+        faces ((4 5 6 7));
+    }
+);

@@ -1,0 +1,9 @@
+data/raw/*
+data/processed/*
+data/locked/*
+data/literature/*
+runs/*
+!**/.gitkeep
+__pycache__/
+.venv/
+*.pyc

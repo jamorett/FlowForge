@@ -1,0 +1,11 @@
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: docker/openfoam.Dockerfile
+    init: true
+  ui:
+    image: node:20-alpine
+    working_dir: /ui
+    volumes:
+      - ../ui:/ui

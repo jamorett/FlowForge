@@ -1,0 +1,20 @@
+# Case registry. Splits are frozen at creation; never reassign locked cases.
+cases:
+  - id: periodic_hill_re5600
+    split: train
+    source: curated
+  - id: periodic_hill_re10595
+    split: train
+    source: curated
+  - id: curved_step
+    split: validation
+    source: curated
+  - id: converging_diverging_channel
+    split: validation
+    source: curated
+  - id: square_duct
+    split: locked
+    source: closure_challenge
+  - id: nasa_wall_mounted_hump
+    split: locked
+    source: closure_challenge

@@ -1,0 +1,9 @@
+role: redteam
+version: 1
+model: muse-spark-1.3
+schema: AttackSpec
+risk_audit: required
+prompt: |
+  Generate flow specs that break champions: hill slopes beyond data,
+  Reynolds sweeps, bumps. Generated flows are validation only, never
+  training. Include risk_audit. Output JSON only.

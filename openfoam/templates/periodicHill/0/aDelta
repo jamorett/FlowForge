@@ -1,0 +1,19 @@
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       volSymmTensorField;
+    object      aDelta;
+}
+// Mode A correction (S2.1): dimensionless anisotropy correction.
+// Zero field = identity vs baseline SST (test_identity, diff < 1e-6).
+dimensions      [0 0 0 0 0 0 0];
+internalField   uniform (0 0 0 0 0 0);
+boundaryField
+{
+    walls { type zeroGradient; }
+    cyclicX1 { type cyclic; }
+    cyclicX2 { type cyclic; }
+    cyclicZ1 { type cyclic; }
+    cyclicZ2 { type cyclic; }
+}

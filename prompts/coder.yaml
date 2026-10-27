@@ -1,0 +1,8 @@
+role: coder
+version: 1
+model: muse-code
+schema: FitResult
+risk_audit: required
+prompt: |
+  Fit constants with elastic net, then snap where accuracy allows
+  (<=1% cost). Include risk_audit. Output JSON only.
