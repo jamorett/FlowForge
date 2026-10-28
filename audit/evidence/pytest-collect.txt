@@ -1,0 +1,3 @@
+$ C:\Users\juanc\AppData\Local\Programs\Python\Python312\python.exe -m pytest --collect-only -q -p no:cacheprovider
+exit=1
+C:\Users\juanc\AppData\Local\Programs\Python\Python312\python.exe: No module named pytest

@@ -1,0 +1,8 @@
+{
+  "id": "rej_001_unbounded_polynomial",
+  "expression": "0.1 * I1**3 + 0.05 * I2**2",
+  "complexity": 11,
+  "rejection_stage": "Rung 0 - Asymptotic Growth",
+  "reason": "Polynomial growth without bounded denominator div(a,b) or tanh leads to numerical divergence at stagnation points (I1 > 50).",
+  "rejected_at": "2026-10-27T15:20:00Z"
+}

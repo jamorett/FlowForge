@@ -36,12 +36,20 @@ def apriori_mse(pred: np.ndarray, target: np.ndarray) -> float:
 
 
 def rung0(expression: str) -> bool:
-    """Symbolic hard filters. True = passes to rung 1."""
+    """Symbolic hard filters. True = passes to rung 1.
+
+    A genuinely invalid candidate returns False.  A broken environment
+    (``ImportError``/``ModuleNotFoundError``, e.g. missing sympy raised
+    either by the import above or inside validation) propagates so it
+    is not masked as "candidate rejected" (CH-09).
+    """
     from flowforge.dsl.parser import validate_candidate
 
     try:
         validate_candidate(expression)
         return True
+    except ImportError:
+        raise
     except Exception:
         return False
 
@@ -55,6 +63,8 @@ def rung1_scores(expressions: list[str], invariants, basis, target) -> list[dict
         try:
             pred = candidate_anisotropy(expr, invariants, basis)
             out.append({"expression": expr, "score": apriori_mse(pred, target)})
+        except ImportError:
+            raise
         except Exception as exc:
             out.append({"expression": expr, "score": DIVERGED_PENALTY, "error": str(exc)})
     return out
@@ -84,6 +94,8 @@ def rung2_short(candidates: list[dict], short_eval: Callable[[str], float] | Non
         if short_eval is not None:
             try:
                 entry["score_rung2"] = float(short_eval(entry["expression"]))
+            except ImportError:
+                raise
             except Exception as exc:
                 entry["score_rung2"] = DIVERGED_PENALTY
                 entry["error_rung2"] = str(exc)
@@ -108,6 +120,8 @@ def rung3_full(candidates: list[dict], invariants, basis, target) -> list[dict]:
         entry = dict(cand)
         try:
             pred = candidate_anisotropy(expr, invariants, basis)
+        except ImportError:
+            raise
         except Exception as exc:
             entry.update({"score": DIVERGED_PENALTY, "realizable": False, "rejected": str(exc)})
             continue

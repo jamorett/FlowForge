@@ -1,0 +1,3 @@
+$ C:\Users\juanc\AppData\Local\Programs\Python\Python312\python.exe -m mypy flowforge
+exit=1
+C:\Users\juanc\AppData\Local\Programs\Python\Python312\python.exe: No module named mypy

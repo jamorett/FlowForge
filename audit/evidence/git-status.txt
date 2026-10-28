@@ -1,0 +1,4 @@
+$ git -c safe.directory=C:/Users/juanc/Desktop/FlowForge status --porcelain
+exit=0
+?? audit/
+?? estructura.txt

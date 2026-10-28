@@ -1,0 +1,40 @@
+flowforge/agents/runtime/client.py:36: [pass_only] pass
+flowforge/agents/runtime/event_logger.py:46: [hardcoded_return] return []
+flowforge/agents/runtime/event_logger.py:56: [hardcoded_return] return None
+flowforge/api/server.py:31: [hardcoded_return] return []
+flowforge/data/split_guard.py:31: [hardcoded_return] return False
+flowforge/data/split_guard.py:35: [hardcoded_return] return True
+flowforge/ladder/ladder.py:6: [mock_synthetic] an evaluator callable so the mock path exercises the same code without
+flowforge/ladder/ladder.py:44: [hardcoded_return] return True
+flowforge/ladder/ladder.py:46: [hardcoded_return] return False
+flowforge/ladder/ladder.py:67: [hardcoded_return] return []
+flowforge/ladder/ladder.py:80: [hardcoded_return] return []
+flowforge/literature/cards.py:20: [hardcoded_return] return True
+flowforge/literature/cards.py:22: [hardcoded_return] return False
+flowforge/literature/harvester.py:23: [mock_synthetic] """Placeholder for arXiv/OpenAlex/Semantic Scholar APIs (S5)."""
+flowforge/orchestrator/round.py:5: [mock_synthetic] Mock mode (--mock-llm) runs rungs 0-3 on synthetic fields without API
+flowforge/orchestrator/round.py:33: [mock_synthetic] def run_round(round_no: int, mock: bool = False,
+flowforge/orchestrator/round.py:67: [mock_synthetic] "mock": mock,
+flowforge/orchestrator/round.py:79: [mock_synthetic] parser.add_argument("--mock-llm", action="store_true")
+flowforge/orchestrator/round.py:82: [mock_synthetic] print(run_round(args.round, mock=args.mock_llm))
+flowforge/redteam/attacks.py:23: [hardcoded_return] return None
+flowforge/render/error_map.py:3: [mock_synthetic] Writes a genuine PNG (stdlib zlib/struct encoder, no placeholder text)
+flowforge/solver/field_io.py:29: [pass_only] pass
+flowforge/solver/runner.py:62: [hardcoded_return] return False
+flowforge/solver/runner.py:65: [hardcoded_return] return False
+tests/integration/test_identity.py:50: [skip_xfail] @pytest.mark.skip(reason="needs Docker baseline run (S1 verification pending)")
+tests/integration/test_identity.py:52: [NotImplementedError] raise NotImplementedError
+tests/integration/test_oracle.py:6: [mock_synthetic] flowforge.physics.frozen_rans) is exercised end to end on synthetic DNS
+tests/integration/test_oracle.py:72: [skip_xfail] @pytest.mark.skip(reason="needs Docker + dataset (S1 verification pending)")
+tests/integration/test_oracle.py:74: [NotImplementedError] raise NotImplementedError
+tests/unit/test_ladder.py:32: [mock_synthetic] result = run_round(1, mock=True)
+tests/unit/test_round_champion.py:6: [mock_synthetic] result = run_round(1, mock=True)
+tests/unit/test_runtime.py:89: [mock_synthetic] rt._client = _FakeClient(texts)  # noqa: SLF001 - test stub, no network
+scripts/download_data.py:4: [mock_synthetic] --synthetic-fallback, generates deterministic local arrays instead of
+scripts/download_data.py:47: [mock_synthetic] parser.add_argument("--synthetic-fallback", action="store_true")
+scripts/download_data.py:55: [mock_synthetic] "Use --synthetic-fallback for offline CI."
+scripts/evaluate_locked.py:14: [hardcoded_return] return 0
+scripts/run_arms.py:4: [mock_synthetic] Mock mode exercises bookkeeping without API/Docker; real mode needs S1-S6
+scripts/run_arms.py:26: [mock_synthetic] parser.add_argument("--mock", action="store_true")
+scripts/run_arms.py:29: [mock_synthetic] scores = [float((seed % 7) + len(arm)) for seed in SEEDS] if args.mock else []
+scripts/run_arms.py:33: [mock_synthetic] print(f"{arm}: needs verified S1-S6; run with --mock for bookkeeping")

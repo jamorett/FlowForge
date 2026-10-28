@@ -1,0 +1,9 @@
+{
+  "id": "curric_001_realizability_fix",
+  "title": "Lumley Triangle Realizability Clamping",
+  "topic": "physics_guardrails",
+  "problem": "Unconstrained regression yields eigenvalues lambda1 > 2/3 or lambda3 < -1/3 near wall boundary layers, crashing simpleFoam.",
+  "solution": "Project anisotropy eigenvalues into barycentric coordinates C1, C2, C3 >= 0 with C1 + C2 + C3 = 1 before evaluating Reynolds stress tensor.",
+  "reference_script": "flowforge.physics.tensors.is_realizable",
+  "lesson": "Never feed un-realizable Reynolds stress corrections to the Navier-Stokes momentum equations."
+}

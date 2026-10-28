@@ -8,8 +8,10 @@ from flowforge.solver.field_io import field_hash, write_correction_fields
 
 def test_write_correction_rejects_asymmetric(tmp_path) -> None:
     bad = np.ones((2, 3, 3))
+    bad[0, 0, 1] = 2.0  # Asymmetric: bad[0, 0, 1] != bad[0, 1, 0]
     with pytest.raises(AssertionError):
         write_correction_fields(tmp_path, bad, np.zeros(2))
+
 
 
 def test_field_hash_stable() -> None:

@@ -1,0 +1,14 @@
+{
+  "id": "atk_001_steep_hill",
+  "name": "Periodic Hill Steepness Attack",
+  "role": "redteam",
+  "base_case": "periodic_hill_re5600",
+  "parameter_sweeps": {
+    "slope_steepness_alpha": 1.45,
+    "reynolds_number": 5600
+  },
+  "target_champions": ["mod_curvature_correction"],
+  "intended_failure_mode": "Excessive curvature damping induces unphysical massive stall extending past domain exit",
+  "status": "active_validation_only",
+  "created_at": "2026-10-27T18:00:00Z"
+}

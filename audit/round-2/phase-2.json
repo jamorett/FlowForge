@@ -1,0 +1,163 @@
+[
+  {
+    "id": "P2-01",
+    "requirement": "S3.1 tensors: s=(grad+gradT)/(2*omega), w=(grad-gradT)/(2*omega); I1..I5 Pope invariants; T1..T4 bases; barycentric C1,C2,C3>=-1e-4 sum=1 (plan:301-310). Dep: numpy only.",
+    "status": "PRESENT_UNTESTED",
+    "evidence": "flowforge/physics/tensors.py:8-60 exact formulas + symmetry asserts T1-T4:40, traceless T2-T4:43-45; tests/unit/test_physics.py:13-39 hand-computed I1=14,I3=-18 (unrun, no pytest audit/evidence/pytest-run.txt exit=1). Probe audit/probes/phase2-gate.py exit=0 pure-rotation slice: s_max=0,I2=-0.5,T4_max=0.1667.",
+    "gap": "No pytest run (env). T1 trace not asserted tensors.py:41-42 (compressible rationale in code)."
+  },
+  {
+    "id": "P2-02",
+    "requirement": "S3.2 SpaRTA targets: a_target=b_DNS-b_SST, DeltaPk_target=-2k(a_target:S) (plan:311-312). Dep: P2-01.",
+    "status": "DECISION_NEEDED",
+    "evidence": "flowforge/physics/frozen_rans.py:8-18 anisotropy_target + production_target=-2.0*k*einsum(a,S); tests/unit/test_physics.py:49 expects -0.4; plan:312 same - sign but plan:314 candidate DeltaPk=+2k(a:S)*h sign conflict.",
+    "gap": "D2 DECISION_NEEDED: code matches plan:312, SpaRTA k-residual intent unproven; sign vs plan:314 must be settled by physics owner."
+  },
+  {
+    "id": "P2-03",
+    "requirement": "S3.3 grammar: only +,-,*,div(a,b)=a/(b^2+1e-4),tanh,exp,sqrt(abs(a)+1e-4), integer powers; no raw / or raw sqrt; complexity<=25 (plan:313-316,324-331; spec:141 smooth-only). Dep: sympy.",
+    "status": "DECISION_NEEDED",
+    "evidence": "flowforge/dsl/grammar.py:19-44 MAX_COMPLEXITY=25, safe_div/safe_sqrt; parser.py:62-63 raw-/ reject, :41-52 integer/negative-power guard, :78-82 cap; tests/unit/test_dsl.py:11-43 (unrun). Import BLOCKED: audit/evidence/import-smoke.txt dsl.* ModuleNotFoundError sympy.",
+    "gap": "D1 DECISION_NEEDED: sqrt(abs(a)) kink at 0 + div~a/b^2 for large b vs spec smooth-only (spec:141). Env: sympy declared pyproject.toml sympy>=1.12 but absent, no uv.lock/.venv (versions-env.json) -> BLOCKED_BY_ENV component, not code defect."
+  },
+  {
+    "id": "P2-04",
+    "requirement": "Candidate format: aDelta=sum_n g^n(I1..I5)T^n (n=1..4), DeltaPk=2k(a:S)h(I) (plan:314; spec:135-141); SymPy->NumPy + C++ compile, canonical hash ID (spec:112). Dep: P2-03.",
+    "status": "SKELETON",
+    "evidence": "flowforge/dsl/evaluate.py:26-40 candidate_anisotropy is single-term g*T1 only + deviatoric projection; compiler.py:20-55 compile_numpy/compile_cpp/compile_candidate; codegen.py:17-28 to_cpp duplicate of compiler.py:36-44; no sum over T1..T4, no h/DeltaPk evaluator, no candidate hash in dsl/orchestrator (search: only solver/runner.py:80 run_hash, literature hash).",
+    "gap": "Multi-basis + production candidate path missing; duplicate C++ printers compiler vs codegen drift risk."
+  },
+  {
+    "id": "P2-05",
+    "requirement": "S3.4 elegance: DL=Nnodes*log2(Nvocab)+sum bits(c); snap to {0,+-1,+-2,+-0.5,+-0.333,+-1.5} if error<=1%; champion min DL within 3% (plan:317-321; spec:213-227). Dep: P2-03.",
+    "status": "PRESENT_UNTESTED",
+    "evidence": "flowforge/elegance/engine.py:9-12 SNAP_CANDIDATES/SNAP_TOLERANCE=0.01/CHAMPION_MARGIN=0.03, :15-17 description_length (VOCAB_SIZE=16 hardcoded, cf grammar.py:29-34 also 16), :20-40 try_snap/pick_champion; tests/unit/test_dsl.py:22-29,60-64 (unrun). Caller: orchestrator/round.py:60 description_length(complexity,[]) constants always empty.",
+    "gap": "C2: tolerances hardcoded in code, not configs/ (no configs/tolerances.yaml; configs/ only budgets/cases/experiments). DL in round understates: constants [] round.py:60. Snapping loop fitting.py:19-32 refits none, spec:219-222 requires refit others."
+  },
+  {
+    "id": "P2-06",
+    "requirement": "Rung-0 hard filters: rotation invariance, zero-strain aDelta->0, complexity<=25, symmetry/trace-free (plan:318,327,331; spec:201-211). Dep: P2-01,P2-03.",
+    "status": "DECISION_NEEDED",
+    "evidence": "elegance/engine.py:43-56 zero_strain_ok(scalar,tol=1e-8), rotation_invariant(fn,x); ladder/ladder.py:38-46 rung0 only validate_candidate (parse/cap), no rotation/zero-strain/symmetry call; evaluate.py:38-39 asserts sym/traceless after projection. Probe phase2-gate pure rotation: s=0,I1/I3/I4/I5=0,I2=-0.5,T4_max=0.1667,T1_max=0.",
+    "gap": "D6 DECISION_NEEDED: pure rotation (s=0,w!=0) T4!=0, candidate g(I2)*T4 would not vanish; single-T1 evaluate masks it. Plan MUST S->0 ambiguous s-only vs s+w. No pure-rotation test."
+  },
+  {
+    "id": "P2-07",
+    "requirement": "S3 fitting: coder fits constants (elastic net, seed=42) then snaps <=1% (plan S3/S5.2; spec:158). Dep: sklearn, P2-05.",
+    "status": "BLOCKED_BY_ENV",
+    "evidence": "flowforge/dsl/fitting.py:6 sklearn ElasticNet(alpha=0.01,l1_ratio=0.5,random_state=42), :19-32 snap_constants; import-smoke fitting ModuleNotFoundError sklearn; pyproject declares scikit-learn>=1.4. Caller only agents/tools/registry.py:23-26 fit_constants_tool; orchestrator never fits.",
+    "gap": "sklearn absent = env (declared dep, no lock/venv), not code. No features-builder from expressions to ElasticNet design matrix in repo."
+  },
+  {
+    "id": "P2-08",
+    "requirement": "S4.1 Zarr per case: /coordinates,cell_volumes,wall_distance,U,p,k,omega,grad_u,invariants/I1..I5,tensor_basis/T1..T4,targets/{a_delta,Pk_delta} (plan:339-340). Dep: zarr v2.",
+    "status": "BLOCKED_BY_ENV",
+    "evidence": "flowforge/data/zarr_store.py:23-27 FIELDS/INVARIANTS/TENSOR_BASIS/TARGETS, :66-100 write_case deferred import zarr v2 assert + recursive read_case; scratch/probe_zarr_store.py round-trip script (unrun here). deps probe: zarr=false; pyproject zarr>=2.17,<3.",
+    "gap": "zarr absent = env. write/read logic present; no observed round-trip in this audit."
+  },
+  {
+    "id": "P2-09",
+    "requirement": "S4 ingest: foamlib fields -> derive invariants/basis/targets, validate sym/trace-free+realizable, register split (spec:101-107; plan S4). Dep: P2-01,P2-02,P2-08.",
+    "status": "PRESENT_UNTESTED",
+    "evidence": "flowforge/data/ingest.py:19-41 validate_anisotropy, ingest_case derives s/w,inv,basis,targets via frozen_rans; caller search: ingest_case has zero callers outside its definition; no foamlib read, no cases.yaml registration write in ingest.py.",
+    "gap": "Orphaned: nothing calls ingest_case; raw->arrays conversion and registry step missing. CH-09 adjacent: flowforge/solver/field_io.py read_fields except Exception: continue/pass per-field and outer, silent .npy sidecar fallback returning {} on total failure - foamlib failures masked (P1-04/P2-09 adjacent, noted here per CH-09)."
+  },
+  {
+    "id": "P2-10",
+    "requirement": "S4.2 LOCKED guard at swarm boundary: any swarm read of data/locked raises PermissionError + logs runs/vault_access.log (plan:341-342,352; spec:111,173,276). Guard function guard_path itself verified in temp; boundary enforcement is the requirement. Never opened data/locked in audit.",
+    "status": "PRESENT_UNTESTED",
+    "evidence": "flowforge/data/split_guard.py:18-46 lexical .. folding, _is_locked, :41-46 LOG append DENIED + raise PermissionError (no role allowlist). Probe phase2-gate.py exit=0 in temp cwd: PermissionError logged=True text='DENIED role=theorist path=data/locked/x'. tests/unit/test_split_guard.py:9-35 locked/root/traversal/log (unrun via pytest). Round-2 fresh: _is_locked(data/locked/x)=True, my_locked_notes/x=False, data/lockedness/x=False (exact segment, lexical only). challenges.md CH-05/verifier2: guard_path denied+logged in temp cwd, traversal data/processed/../locked/x DENIED. scripts/evaluate_locked.py read: logs LOCKED_EVAL intent, prints Scoring runs in evaluator, exits 0, never scores, does not call guard_path.",
+    "gap": "CH-05 UPHELD: boundary unenforced - only caller ingest.py:27 guard_path(data/processed/<case>) on never-locked path; no agent tool/registry path calls guard_path. _is_locked denies any exact locked segment (split_guard.py return True for any match, comment claims data/locked pair rule), lexical folding only, no symlink/resolved-path handling, LOG cwd-relative runs/vault_access.log. evaluate_locked.py false-positive milestone risk (logs+exit0, no scoring). Function verified, requirement not reachable in production."
+  },
+  {
+    "id": "P2-11",
+    "requirement": "S4b content-addressed caching + orchestrator round bookkeeping + append-only events per round (plan:336; spec:112-113). Dep: S4a runtime.",
+    "status": "SKELETON",
+    "evidence": "solver/runner.py:80-107 compute_run_hash+cache (solver only, Phase1 scope); no candidate-ID hash in dsl/orchestrator; orchestrator/round.py:33-74 run_round writes no files (no open/EventLogger), returns dict only; api/server.py:25 reads runs/<session>/events.jsonl that round never creates.",
+    "gap": "Round bookkeeping/event-log step missing in round.py; candidate dedup on re-proposed hash (spec:170) not enforced. CH-11 UPHELD: fresh count round.py events.jsonl=0 EventLogger=0 - run_round writes no events.jsonl, API reads runs/<session>/events.jsonl no production code creates; only runs/probe_s55 synthetic ticks on disk."
+  },
+  {
+    "id": "P2-12",
+    "requirement": "S5.1 ladder: rung0 symbolic, rung1 a priori top50%, rung2 short 60s top50%, rung3 full+realizability; minimax max_c RMSE ratio (plan:364-369; spec:159-161). Dep: P2-04,P2-06,solver for real rungs.",
+    "status": "PRESENT_UNTESTED",
+    "evidence": "flowforge/ladder/ladder.py:19-24 minimax_score, :26-30 halving keep max(1,n//2), :38-137 rung0/rung1/rung2_short(short_eval callable)/rung3_full(is_realizable gate)/run_ladder enforced order; tests/unit/test_ladder.py:8-29 (unrun, needs sympy via rung0).",
+    "gap": "Rung2/3 in production are a priori MSE on same target (round.py:41-47 short_eval=first-half apriori), not short/full RANS; minimax_score has no caller in ladder/round (scores are raw MSE, not SST-normalized worst-case). CH-09 UPHELD (swallowed exceptions): ladder.py rung0 except Exception: return False; rung1/rung2/rung3 convert any exception incl. missing sympy/dependency to DIVERGED_PENALTY=1e6, so broken env looks like all candidates diverged. Needs narrow excepts + loud failure on missing deps."
+  },
+  {
+    "id": "P2-13",
+    "requirement": "S5.2 typed prompts: 7 versioned YAML (board RoundPlan, theorist CandidateProposal, coder FitResult, analyst AnalysisReport, skeptic SkepticCritique, redteam AttackSpec, composer CompositionPlan) each risk_audit, schema-validated JSON, one repair retry (plan:370-373,385; spec:167-173). Dep: agents/schemas, runtime client.",
+    "status": "SKELETON",
+    "evidence": "prompts/*.yaml 7 files each ~8 lines role/version/model/schema/risk_audit:required + 2-3 sentence prompt (analyst/board/coder/composer/redteam/skeptic/theorist); flowforge/agents/schemas.py:12-95 Pydantic v2 extra=forbid, risk_audit min_length, ROLE_SCHEMAS all 7; runtime/client.py complete_structured one repair retry (Phase1). Stub-scan: registry search_cards return [] registry.py:19.",
+    "gap": "Prompts thin stubs: no mechanism/grammar detail beyond theorist complexity<=25; no loader wiring prompts->runtime found; no recorded-sample validation observed."
+  },
+  {
+    "id": "P2-14",
+    "requirement": "S5.3 literature: arXiv/OpenAlex/Semantic Scholar + NASA, pdfplumber extract ClosureCards to data/literature/, reject unparseable, top-30 physics review, cache/rate-limit (plan:374-375; spec:117-125). Dep: httpx,pdfplumber,sympy via cards.",
+    "status": "SKELETON",
+    "evidence": "flowforge/literature/harvester.py:22-33 _fetch_text only arXiv httpx (docstring :23 Placeholder), :36-47 harvest cache sha256[:16] in data/literature, :50-65 extract_cards toy MECHANISM:/FORM: fixtures doi='fixture'; cards.py:10-22 ClosureCard(doi,mechanism,model_form,flows) validate=parse_expression; no pdfplumber/OpenAlex/Semantic/NASA code; harvest() zero callers; registry search_cards returns []:19; data/literature only .gitkeep.",
+    "gap": "Fixture-grade only; cards missing variables/assumptions/failures/DOI spec fields; no top-30 review artifact."
+  },
+  {
+    "id": "P2-15",
+    "requirement": "S5.4 unattended round: Board->Theorist->Coder->Rungs0-3->Analyst/Skeptic->RedTeam->Composer, one group full round unattended + every step in event log = Phase2 GATE (plan:376-377,361; spec:316-320). Dep: P2-11..P2-14, LLM or mock.",
+    "status": "SKELETON",
+    "evidence": "flowforge/orchestrator/round.py:17 MOCK_CANDIDATES 4 fixed, :20-30 synthetic_fields(n=8,seed=42,target=0.5*T1), :33-74 run_round ignores mock flag except echo :67, always synthetic, no LLM/board/analyst/skeptic/redteam/composer calls, no EventLogger; main :77-82 --mock-llm/--round prints dict. tests test_ladder.py:31-34, test_round_champion.py:5-10 mock only (unrun).",
+    "gap": "GATE UNVERIFIABLE (see md): exact CLI in temp cwd via audit/probes/phase2-gate.py exit=0 probe but mock_round_error ModuleNotFoundError sympy at round.py:35->parser.py:10. Real (non-mock) path does not exist. CH-11 UPHELD: same event-log break as P2-11 - run_round returns dict only, always synthetic_fields, no events.jsonl, so Phase-2 gate every-step-in-event-log cannot occur."
+  },
+  {
+    "id": "P2-16",
+    "requirement": "S5.5 WS /ws/events by-construction pacing ONLY: handler reachable via FastAPI app route /ws/events, bare subscribe cannot request pacing/count (no such param), first event sent promptly then server sleeps PACE_SECONDS=0.05 after each line (~20/s) (plan:378-379,383-388). Wall-clock spacing is NOT part of this VERIFIED claim.",
+    "status": "VERIFIED",
+    "evidence": "flowforge/api/server.py:19 PACE_SECONDS=0.05, ws_events(ws,session=default) signature has NO pacing/count param, await ws.send_text(line) BEFORE await asyncio.sleep(PACE_SECONDS) each iteration, FastAPI route /ws/events registered (fresh inspect: routes include /ws/events). Round-1 probe phase2-ws2.py exit=0 recorded delays=[0.05]*5. WALL-CLOCK UNPROVEN IN SANDBOX: socketpair/TestClient blocked WinError 10013 (round-1+round-2 verifier2), no fresh wall-clock timestamps obtained round-2.",
+    "gap": "CH-04 partly UPHELD: wall-clock UNPROVEN in sandbox (see evidence). Defects: (1) end message sent only after final 50ms sleep (sleep after last line before end send); (2) no live tail - handler streams only file snapshot present at connect, events appended later never sent. Keep VERIFIED only for by-construction pacing as narrowed in requirement; live-tail/end-delay/wall-clock remain unproven/defective."
+  },
+  {
+    "id": "P2-17",
+    "requirement": "Canonical cases channel + flatPlate templates in openfoam/templates/ (plan:361; spec Phase2 A:318); also bump/squareDuct per folder arch plan:100.",
+    "status": "MISSING",
+    "evidence": "openfoam/templates/{bump,channel,flatPlate,squareDuct}/ contain only .gitkeep (dir listing this audit); periodicHill has real 0/constant/system files but flat placeholder mesh (GATE.md).",
+    "gap": "P2 CONFIRMED: channel/flatPlate canonical cases absent, rung2/3 have no case to run."
+  },
+  {
+    "id": "P2-18",
+    "requirement": "Frozen tolerances in configs/ committed before experiments: elegance 3%, snap 1%, rung-0 rotation/limits, baseline tolerance (plan:84; spec:227). Dep: none.",
+    "status": "MISSING",
+    "evidence": "configs/ = budgets.yaml (dollar/roles/solver caps only), cases.yaml, experiments/*.yaml scaffold-only; no tolerances.yaml. Code constants: elegance/engine.py:11-12 0.01/0.03, grammar.py:21 1e-4, tensors.py:56-60 1e-4, engine.py:43-44,56 1e-8, solver/runner.py:20 1e-4, symbolic/tasks.py:6 0.01 duplicate.",
+    "gap": "C2 CONFIRMED: tolerances scattered/duplicated in code, not frozen in configs/; changing them requires code edit, no single source."
+  },
+  {
+    "id": "P2-19",
+    "requirement": "OM-1 Feature recomputation vs dataset own features within tolerance (spec Tests layer): recomputed invariants/features compared to dataset-stored features",
+    "status": "MISSING",
+    "evidence": "Keyword search round-2 challenges.md OM-1: no dedicated row in round-1 111 rows; no recomputation-vs-stored-features code/test found in flowforge/ cited by round-1/round-2 searches.",
+    "gap": "No implementation or test; tolerance undefined in configs/ (see P2-18)."
+  },
+  {
+    "id": "P2-20",
+    "requirement": "OM-2 Agent-layer metrics per prompt version: schema-valid rate, parse rate, duplicate rate, cost per round (spec Tests)",
+    "status": "MISSING",
+    "evidence": "challenges.md OM-2: schemas exist (agents/schemas.py, P2-13) but no metrics module/row; no per-prompt-version metric computation cited in flowforge/agents/.",
+    "gap": "No metrics tracked/emitted; cannot compare prompt versions or cost per round."
+  },
+  {
+    "id": "P2-21",
+    "requirement": "OM-3 Elegance test set: limits pass on zero correction / fail on deliberately wrong closure; description length identical for algebraically equivalent expressions after canonicalization; snapping refits remaining constants (spec Elegance+Tests)",
+    "status": "SKELETON",
+    "evidence": "Partial: elegance/engine.py description_length/try_snap/pick_champion exists (P2-05), zero_strain_ok scalar only (P2-06). challenges.md OM-3: full test set absent, only partially inside P2-05 gap; round.py DL uses empty constants list.",
+    "gap": "No zero/wrong-closure limit tests, no canonical-equivalence DL test, snapping does not refit remaining constants (fitting.py). Test set missing, engine skeleton only."
+  },
+  {
+    "id": "P2-22",
+    "requirement": "OM-4 Rung-0 equilibrium log-layer limit and smoothness/near-singular gradient check (spec Elegance hard filters)",
+    "status": "SKELETON",
+    "evidence": "Partial: ladder rung0 only validate_candidate parse/cap (ladder.py rung0), elegance zero_strain_ok/rotation_invariant helpers uncalled by rung0 (P2-06). challenges.md OM-4: P2-06 covers zero-strain/rotation only.",
+    "gap": "No equilibrium log-layer limit check, no smoothness/near-singular gradient check in rung0; pure-rotation T4 issue (P2-06 D6) also open."
+  },
+  {
+    "id": "P2-23",
+    "requirement": "OM-5 Literature etiquette+completeness: robots.txt/identifying user-agent, NASA TMR equation cards, top-30 hand-review artefact (spec Literature)",
+    "status": "SKELETON",
+    "evidence": "Partial: literature/harvester.py arXiv-only _fetch_text + cache, cards.py ClosureCard parse check (P2-14). challenges.md OM-5: P2-14 covers APIs/cards only in part; no robots.txt/user-agent, NASA TMR, or top-30 artefact cited.",
+    "gap": "Etiquette (robots.txt, identifying UA), NASA TMR cards, and top-30 hand-review artefact all missing; harvester fixture-grade."
+  }
+]

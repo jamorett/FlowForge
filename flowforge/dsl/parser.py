@@ -40,9 +40,17 @@ def _validate_tree(expr: sp.Expr, text: str) -> None:
                 raise ValueError(f"Function {func.__name__} not allowed in {text!r}")
         if isinstance(node, sp.Pow):
             exp = node.exp
-            if not isinstance(exp, sp.Integer):
+            is_half = (exp == sp.Rational(1, 2) or exp == sp.Float(0.5))
+            if is_half:
+                base = node.base
+                guarded = isinstance(base, sp.Add) and any(
+                    term == sp.Float("1e-4") or term == sp.Rational(1, 10000) for term in base.args
+                )
+                if not guarded:
+                    raise ValueError(f"Unguarded square root in {text!r}; use sqrt(a)")
+            elif not isinstance(exp, sp.Integer):
                 raise ValueError(f"Only integer powers allowed in {text!r}")
-            if int(exp) < 0:
+            elif int(exp) < 0:
                 # Only guarded division may invert: (b**2 + 1e-4) ** -1 from div().
                 base = node.base
                 guarded = int(exp) == -1 and isinstance(base, sp.Add) and any(
@@ -76,8 +84,20 @@ def complexity(expr: sp.Expr) -> int:
 
 
 def validate_candidate(text: str) -> sp.Expr:
+    local = {str(s): s for s in INVARIANTS}
+    local.update(_ALLOWED_FUNCS)
+    local["sqrt"] = _safe_sqrt
+    local["div"] = _safe_div
+    try:
+        raw_expr = sp.sympify(text, locals=local, evaluate=False)
+        raw_n = sum(1 for _ in sp.preorder_traversal(raw_expr))
+        if raw_n > MAX_NODES:
+            raise ValueError(f"Complexity {raw_n} exceeds cap {MAX_NODES}")
+    except (sp.SympifyError, SyntaxError, TypeError):
+        pass
     expr = parse_expression(text)
     n = complexity(expr)
     if n > MAX_NODES:
         raise ValueError(f"Complexity {n} exceeds cap {MAX_NODES}")
     return expr
+

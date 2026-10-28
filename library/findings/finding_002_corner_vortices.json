@@ -1,0 +1,10 @@
+{
+  "id": "find_002_corner_vortices",
+  "title": "Normal Stress Anisotropy Driving Corner Secondary Flows",
+  "author_role": "analyst",
+  "flow_case": "square_duct",
+  "observation": "Linear Boussinesq model completely misses 8-vortex secondary motion of Prandtl second kind because (b22 - b33) is strictly zero.",
+  "recommended_mechanism": "anisotropic_normal_stress",
+  "evidence": "Quadratic tensor basis terms T2 and T3 generate non-zero normal stress difference sufficient to sustain secondary recirculation.",
+  "created_at": "2026-10-27T17:15:00Z"
+}

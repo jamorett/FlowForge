@@ -1,0 +1,9 @@
+{
+  "id": "curric_002_constant_snapping",
+  "title": "Rational Constant Snapping within 1% Tolerance",
+  "topic": "elegance_engine",
+  "problem": "Raw regression yields arbitrary floating point constants like 0.0498721 which inflate description length without physical basis.",
+  "solution": "Snap to clean rationals {0, +-1, +-0.5, +-0.05, +-1.5}. Accept snapped constant if worst-case error delta <= 1.0%.",
+  "reference_script": "flowforge.elegance.engine.snap_constant",
+  "lesson": "Simplicity and compression improve held-out out-of-distribution generalization."
+}

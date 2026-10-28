@@ -1,0 +1,9 @@
+# Frozen before experiments; do not change after first results (plan S0/S3/S6/S7)
+elegance_margin: 0.03
+snapping_tolerance: 0.01
+identity_tolerance: 1.0e-6
+oracle_ratio: 0.70
+baseline_epsilon: 0.05
+realizability_tolerance: -1.0e-4
+mesh_tolerance: 0.02
+gate_penalty_bits: 16

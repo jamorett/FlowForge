@@ -24,9 +24,13 @@ def test_anisotropy_symmetric_traceless() -> None:
 
 def test_parse_residuals() -> None:
     log = ("Time = 1\nSolving for p, Initial residual = 0.1, Final residual = 0.00005, No Iterations 3\n"
-           "Time = 2\nSolving for p, Initial residual = 0.01, Final residual = 0.00002, No Iterations 2\n")
+           "Solving for Ux, Initial residual = 0.05, Final residual = 0.00004, No Iterations 2\n"
+           "Time = 2\nSolving for p, Initial residual = 0.01, Final residual = 0.00002, No Iterations 2\n"
+           "Solving for Ux, Initial residual = 0.02, Final residual = 0.00003, No Iterations 2\n")
     res = parse_residuals(log)
     assert res["p"] == pytest.approx(0.00002)
+    assert res["Ux"] == pytest.approx(0.00003)
     assert residuals_converged(res)
+
     assert not residuals_converged({"p": 0.1})
     assert not residuals_converged({})

@@ -1,0 +1,12 @@
+{
+  "id": "mod_nonlinear_eddy_viscosity",
+  "name": "Pope-Shih Quadratic Constitutive Module",
+  "expression": "0.08 * T2 + 0.02 * T3",
+  "complexity": 7,
+  "description_length_bits": 44.3,
+  "mechanisms": ["anisotropic_normal_stress", "secondary_motion"],
+  "training_cases": ["square_duct", "periodic_hill_re5600"],
+  "status": "candidate",
+  "constants": {"c1": 0.08, "c2": 0.02},
+  "created_at": "2026-10-27T14:30:00Z"
+}

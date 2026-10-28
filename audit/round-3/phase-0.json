@@ -1,0 +1,135 @@
+[
+  {
+    "id": "P0-01",
+    "requirement": "Accounts before kickoff: GitHub, Kaggle, Meta Model API (spec Phase 0; plan S0 owns accounts)",
+    "status": "BLOCKED_BY_ENV",
+    "evidence": "audit/evidence/versions-env.json:82-86 MODEL_API_KEY_set=false, KAGGLE_USERNAME_set=false, KAGGLE_KEY_set=false (names only, values never read); no account artefact in repo tree audit/evidence/tree.txt:1-306",
+    "gap": "No Kaggle token or Meta approval can be exercised offline; real download and live API both blocked. GitHub remote/CI status not inspectable offline."
+  },
+  {
+    "id": "P0-02",
+    "requirement": "S0.1 pyproject.toml with exact pinned dependencies (plan S0.1 lines 156-189)",
+    "status": "PRESENT_UNTESTED",
+    "evidence": "pyproject.toml:10-30 lists all 20 plan dependencies with same bounds (numpy>=1.26,<2.0; zarr>=2.17,<3.0; etc.) and pyproject.toml:32-33 dev pytest/ruff/mypy; opened in full; round-2 CH-12 spot-check: audit/probes/r2p01-probe.py exit 0 (subprocess.run timeout=120): plan_exists=True plan_lines=489; run_experiment --help exit 1 ModuleNotFoundError flowforge; gate_logic exit 0 4 PASS; pytest exit 1 No module named pytest; docker/uv FileNotFoundError; sympy ModuleNotFoundError; budgets_loaders=[]",
+    "gap": "No observed install/resolution: import-smoke 47/56 OK with 9 failures for tenacity/sympy/sklearn (audit/evidence/import-smoke.txt:18,33-38,44-45) proves the current interpreter is not the declared environment."
+  },
+  {
+    "id": "P0-03",
+    "requirement": "S0.1 pass criteria: uv sync resolves and generates uv.lock (plan line 191)",
+    "status": "MISSING",
+    "evidence": "Live check 2026-10-27: Test-Path uv.lock = False; audit/evidence/versions-env.json:87 uv_lock_exists=false; root listing has 7 pip-* temp dirs and no lockfile",
+    "gap": "uv.lock absent, so installs are not reproducible; two-machine reproducibility claim (spec line 27) unmet."
+  },
+  {
+    "id": "P0-04",
+    "requirement": "S0 uv environment works: uv sync / uv run entry points used by every later verification command",
+    "status": "BLOCKED_BY_ENV",
+    "evidence": "audit/evidence/versions-env.json:4 uv exit=127 FileNotFoundError; live python --version = Python 3.12.10 exit 0 while uv/docker not recognised; audit/evidence/step0-summary.txt:13 versions exit 127/127",
+    "gap": "uv not on PATH and no .venv (versions-env.json:88 venv_exists=false). Every plan verification command prefixed 'uv run' is unexecutable here."
+  },
+  {
+    "id": "P0-05",
+    "requirement": "S0.2 configs/budgets.yaml: session limit, per-role model/tokens/temperature, solver caps (plan lines 194-209)",
+    "status": "PRESENT_UNTESTED",
+    "evidence": "configs/budgets.yaml:1-13 matches plan verbatim (limit 50.00; 7 roles; solver caps 10/60s/300s), opened in full; reachable from no code: caller search found zero loaders, budget enforcement instead hardcodes client.py:19 SESSION_LIMIT=50.00; round-2 CH-12 spot-check: audit/probes/r2p01-probe.py exit 0 (subprocess.run timeout=120): plan_exists=True plan_lines=489; run_experiment --help exit 1 ModuleNotFoundError flowforge; gate_logic exit 0 4 PASS; pytest exit 1 No module named pytest; docker/uv FileNotFoundError; sympy ModuleNotFoundError; budgets_loaders=[]",
+    "gap": "Orphaned config: nothing parses budgets.yaml, so editing it changes nothing; temperature/reasoning keys have no consumer (client.py:108-113 sends neither). No test loads or validates it."
+  },
+  {
+    "id": "P0-06",
+    "requirement": "S0.2 configs/cases.yaml: 6 registered cases with frozen train/validation/locked splits, never reassigned (plan lines 210-213, 229)",
+    "status": "PRESENT_UNTESTED",
+    "evidence": "configs/cases.yaml:3-20 registers exactly periodic_hill_re5600/re10595 train, curved_step + converging_diverging_channel validation, square_duct + nasa_wall_mounted_hump locked; only reference in code is a docstring at flowforge/data/ingest.py:4; round-2 CH-12 spot-check: audit/probes/r2p01-probe.py exit 0 (subprocess.run timeout=120): plan_exists=True plan_lines=489; run_experiment --help exit 1 ModuleNotFoundError flowforge; gate_logic exit 0 4 PASS; pytest exit 1 No module named pytest; docker/uv FileNotFoundError; sympy ModuleNotFoundError; budgets_loaders=[]",
+    "gap": "Orphaned config: no loader enforces splits from this file; split_guard operates on paths, not this registry. Locked provenance (closure_challenge) is asserted, never verified against a clone (see P0-16, D3)."
+  },
+  {
+    "id": "P0-07",
+    "requirement": "Spec folder structure configs/experiments/: baseline.yaml, swarm.yaml, swarm_no_redteam.yaml, sparse_baseline.yaml as runnable experiment configs",
+    "status": "SKELETON",
+    "evidence": "All four files are 1-line scaffolds: configs/experiments/baseline.yaml:1-2, swarm.yaml:1-2, swarm_no_redteam.yaml:1-2, sparse_baseline.yaml:1-2 ('Scaffold only' + experiment name); scripts/run_experiment.py:13-22 accepts --config but never parses it, hardcoding case periodic_hill_re5600/template-v1/kOmegaSST",
+    "gap": "No budgets, seeds, arms, solver or mesh settings in any experiment file; selecting a different config changes only the printed string."
+  },
+  {
+    "id": "P0-08",
+    "requirement": "S0.3 real ingestion: download_data.py fetches curated Kaggle dataset + Closure Challenge into data/raw with SHA-256 manifest.json (plan line 216; spec lines 101-103)",
+    "status": "SKELETON",
+    "evidence": "scripts/download_data.py:53-56 real path only raises SystemExit('Real download needs Kaggle/Closure Challenge access'); live data/raw listing = only .gitkeep (0 bytes); stub-scan audit/evidence/stub-scan.txt:33-35 flags the synthetic markers; no Kaggle/clone code exists in the file (60 lines, opened in full)",
+    "gap": "No fetcher, no source URLs, no license recording (spec line 103 requires SHA-256 + URL + license), no Closure Challenge format check. CASES at download_data.py:20-25 also omits both locked cases, so even a future manifest cannot cover locked provenance."
+  },
+  {
+    "id": "P0-09",
+    "requirement": "S0.3/S0 guardrail: --synthetic-fallback generates valid local arrays offline for CI (plan lines 216-217, 230)",
+    "status": "PRESENT_UNTESTED",
+    "evidence": "scripts/download_data.py:32-42 deterministic rng(42) writes 4x (100,3) .npy + SHA-256 manifest; invoked by .github/workflows/ci.yml:19-20; numpy is present per import-smoke (flowforge modules importing numpy pass); round-2 CH-12 spot-check: audit/probes/r2p01-probe.py exit 0 (subprocess.run timeout=120): plan_exists=True plan_lines=489; run_experiment --help exit 1 ModuleNotFoundError flowforge; gate_logic exit 0 4 PASS; pytest exit 1 No module named pytest; docker/uv FileNotFoundError; sympy ModuleNotFoundError; budgets_loaders=[]",
+    "gap": "No observed passing run recorded (pytest/ruff absent, CI run unverifiable). Synthetic (100,3) arrays are not OpenFOAM fields/Zarr cases, so a green smoke proves bookkeeping only, never ingestion."
+  },
+  {
+    "id": "P0-10",
+    "requirement": "S0.4 docker/: OpenFOAM ESI image built, version pinned closest to dataset v2006 (spec lines 28, 52-53; plan S0.4)",
+    "status": "SKELETON",
+    "evidence": "docker/openfoam.Dockerfile:1-4 is 4 lines: FROM opencfd/openfoam-default:latest (unpinned, contradicts plan S0 guardrail line 226 pinned-versions rule) + comment 'Placeholder scaffold'; docker/compose.yaml:1-11 api service builds it but defines no command/workers; no wmake/closure build step",
+    "gap": "Image never built here; ESI version decision (REPORT D7) unmade; correctedKOmegaSST is not compiled into the image, so the Phase 0/1 solver path has no container."
+  },
+  {
+    "id": "P0-11",
+    "requirement": "S0.4 verification: docker run --rm opencfd/openfoam-default:latest simpleFoam -help exits 0 with banner (plan lines 220-221)",
+    "status": "BLOCKED_BY_ENV",
+    "evidence": "audit/evidence/versions-env.json:5 docker exit=127 FileNotFoundError; live check docker not recognised; audit/GATE.md:52 docker --version exit 127",
+    "gap": "Docker not on PATH in this environment; probe cannot run. Must be run outside the sandbox (GATE.md lines 78-79)."
+  },
+  {
+    "id": "P0-12",
+    "requirement": "Spec Phase 0 gate (A): baseline SST on one periodic hill runs in the container from one command (spec lines 306-308)",
+    "status": "BLOCKED_BY_ENV",
+    "evidence": "Depends on P0-08 (no data: data/raw only .gitkeep) + P0-11 (no Docker); entry point scripts/run_experiment.py:11-26 exists but delegates to solver runner that needs Docker; solver tests confirming the path are skipped at tests/integration/test_identity.py:50-52 and test_oracle.py:72-74; round-2: audit/probes/r2p01-probe.py exit 0 (subprocess.run timeout=120): plan_exists=True plan_lines=489; run_experiment --help exit 1 ModuleNotFoundError flowforge; gate_logic exit 0 4 PASS; pytest exit 1 No module named pytest; docker/uv FileNotFoundError; sympy ModuleNotFoundError; budgets_loaders=[]",
+    "gap": "BLOCKED_BY_ENV: exact user commands outside sandbox: `uv sync` then `docker run --rm opencfd/openfoam-default:latest simpleFoam -help` then `uv run python scripts/download_data.py --synthetic-fallback` (or real fetch) then `uv run python scripts/run_experiment.py --config configs/experiments/baseline.yaml`; success requires converged profile error vs dataset RANS <0.05 on curved mesh (P1-03). Fresh probe: run_experiment --help exit 1 No module named 'flowforge', docker/uv absent."
+  },
+  {
+    "id": "P0-13",
+    "requirement": "S0 CI: .github/workflows/ci.yml with lint + unit tests + one tiny OpenFOAM case per push; acceptance CI green on skeleton (plan line 151; spec lines 39, 281)",
+    "status": "SKELETON",
+    "evidence": ".github/workflows/ci.yml:15-20 runs ruff + pytest tests/unit tests/agents + synthetic smoke, but contains no OpenFOAM/Docker job at all; fallbacks at ci.yml:14,16,18,20 ('|| pip install', '|| ruff', '|| pytest') mask uv failures; local equivalents all exit 1 'No module named pytest/ruff' (audit/evidence/pytest-run.txt, ruff.txt, mypy.txt)",
+    "gap": "CI greenness UNVERIFIABLE offline (no GitHub run inspected) and structurally incomplete vs spec: the tiny OpenFOAM case leg is missing, so CI can go green while the solver path is dead."
+  },
+  {
+    "id": "P0-14",
+    "requirement": "S0 toolchain probe: python/uv/docker versions printed before code depends on them (plan line 151)",
+    "status": "BLOCKED_BY_ENV",
+    "evidence": "Live: python --version -> Python 3.12.10 exit 0; uv/docker not recognised; audit/evidence/versions-env.json:2-7 python 3.12.10, uv 127, docker 127, node v24.22.0 exit 0; audit/evidence/step0-summary.txt:13 same",
+    "gap": "Only python+node legs print. uv and Docker legs fail in this environment, so the S0 acceptance clause 'versions printed' is only 2/4 satisfied."
+  },
+  {
+    "id": "P0-15",
+    "requirement": "Phase 0 (B): repo skeleton from spec folder structure (spec lines 47-88; plan section 4)",
+    "status": "PRESENT_UNTESTED",
+    "evidence": "audit/evidence/tree.txt:54-306 shows configs/, docker/, flowforge/ 13 subpackages, openfoam/, library/, prompts/, ui/, tests/ all present; import-smoke audit/evidence/import-smoke.txt:1-59 exit 0 with 47/56 modules OK; round-2 CH-12 spot-check: audit/probes/r2p01-probe.py exit 0 (subprocess.run timeout=120): plan_exists=True plan_lines=489; run_experiment --help exit 1 ModuleNotFoundError flowforge; gate_logic exit 0 4 PASS; pytest exit 1 No module named pytest; docker/uv FileNotFoundError; sympy ModuleNotFoundError; budgets_loaders=[]",
+    "gap": "Skeleton imports partially only: 9/56 fail on missing tenacity/sympy/sklearn, proving skeleton was never exercised in the declared uv environment. project_status.md 'Complete' labels for these modules are unverified (H4)."
+  },
+  {
+    "id": "P0-16",
+    "requirement": "S0 owns: Closure Challenge clone + README submission-format check before day 1 (plan line 151; spec lines 97, 107)",
+    "status": "MISSING",
+    "evidence": "No clone, README, or format artefact anywhere in audit/evidence/tree.txt:1-306; scripts/download_data.py (60 lines) contains no git/clone/format code; configs/cases.yaml:15-20 merely asserts closure_challenge as source for locked cases",
+    "gap": "Locked-set metric/submission format never confirmed; train/locked overlap (D3) cannot be checked until the benchmark contents are inspected."
+  },
+  {
+    "id": "P0-17",
+    "requirement": "Dependency for S1/S2: frozen tolerances (elegance 3%, snapping 1%, baseline-match, identity 1e-6, oracle 0.70, mesh 2%) live in configs/ committed before experiments (plan lines 84-86)",
+    "status": "MISSING",
+    "evidence": "Live configs/ listing = budgets.yaml, cases.yaml, experiments/{baseline,sparse_baseline,swarm,swarm_no_redteam}.yaml only; no tolerances file; values scattered: flowforge/elegance/engine.py:11-12 (0.01/0.03), tests/integration/test_identity.py:15 (1e-6), test_oracle.py:17 (0.70), flowforge/physics/tensors.py:56 (1e-4), flowforge/composer/gates.py:13 (16 bits), plan S1.3 baseline 0.05 in plan text only",
+    "gap": "Tolerances are frozen in code/text, not in configs/ as the plan requires; changing one means editing code, and no single committed file freezes them before experiments (finding C2)."
+  },
+  {
+    "id": "P0-18",
+    "requirement": "Model-ID decision dependency: role model IDs in budgets/plan must be real documented Meta API IDs before S4 client work builds on them",
+    "status": "DECISION_NEEDED",
+    "evidence": "configs/budgets.yaml:5 coder muse-code; plan line 52 lists muse-spark-1.3/muse-code/wonder and line 5 addresses 'Muse Spark, Wonder'; flowforge/agents/runtime/client.py:24 prices muse-code + wonder; task-documented API IDs are muse-spark-1.3, muse-spark-1.3-contributor, muse-wonder-1.0, which match neither muse-code nor wonder; spec roles table line 149 says Coder = Contributor tier or Spark fallback",
+    "gap": "Owner must pick coder ID (recommend muse-spark-1.3 until contributor terms accepted, per spec line 149) and confirm/replace wonder -> muse-wonder-1.0 in budgets.yaml, plan, and client.py pricing together (finding C1/D8)."
+  },
+  {
+    "id": "P0-19",
+    "requirement": "OM-6 Solver-run caps per round + session dollar pause as enforced behaviour (spec Guardrails; configs/budgets.yaml solver_caps + session_dollar_limit)",
+    "status": "SKELETON",
+    "evidence": "configs/budgets.yaml:1,10-13 session_dollar_limit=50.00, max_solver_runs_per_round=10, 60s/300s caps; flowforge/solver/runner.py:20-31,99,166-168 timeout caps 60/300 asserted in code; flowforge/agents/runtime/client.py:19,65-68,119-120 hardcoded SESSION_LIMIT=50.00 check_budget pre-call (fixed 0.01 est) + post-spend BudgetExceededError; round-2 probe budgets_loaders=[] (no budgets.yaml/solver_caps loader), client unimportable here (tenacity absent per round-1 P1-15)",
+    "gap": "Per-round solver-run count (10) never enforced/counted anywhere; dollar pause is hardcoded duplicate not budgets.yaml-driven, per-role caps absent, and neither path executed in this env (no pytest/docker). Enforce via loading budgets.yaml in runner/orchestrator + ModelRuntime and test cap-exceeded pause."
+  }
+]

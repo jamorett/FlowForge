@@ -1,0 +1,12 @@
+{
+  "id": "mod_curvature_correction",
+  "name": "Spalart-Shur Streamline Curvature Correction",
+  "expression": "-0.05 * T1 * tanh(I1)",
+  "complexity": 5,
+  "description_length_bits": 32.1,
+  "mechanisms": ["streamline_curvature", "stabilizing_rotation"],
+  "training_cases": ["periodic_hill_re5600", "curved_step"],
+  "status": "candidate",
+  "constants": {"c1": -0.05},
+  "created_at": "2026-10-27T12:00:00Z"
+}

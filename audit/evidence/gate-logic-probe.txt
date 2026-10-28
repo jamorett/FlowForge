@@ -1,0 +1,7 @@
+\$ python audit/probes/gate_logic_probe.py
+exit=0
+PASS test_identity_logic
+PASS test_zero_correction_is_exact_identity
+PASS test_oracle_logic
+PASS test_dns_injection_targets_reduce_error
+solver tests present: True True

@@ -7,3 +7,14 @@ runs/*
 __pycache__/
 .venv/
 *.pyc
+pip-build-tracker-*/
+pip-ephem-wheel-cache-*/
+pip-install-*/
+pip-target-*/
+ui/node_modules/
+ui/dist/
+scratch/
+runs/probe_s55/
+powershell.cmd
+estructura.txt
+tmp*

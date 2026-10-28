@@ -1,0 +1,121 @@
+[
+  {
+    "id": "P5-01",
+    "requirement": "S7.1 three arms defined: full swarm, swarm-no-redteam ablation, sparse-regression baseline (plan l.426-430; spec l.335, RP1/RP2)",
+    "status": "SKELETON",
+    "evidence": "scripts/run_arms.py:16 ARMS=('swarm','swarm_no_redteam','sparse_baseline'); configs/experiments/{swarm,swarm_no_redteam,sparse_baseline}.yaml each 2 lines 'Scaffold only / experiment: <name>' (read exit 0); no loader consumes them (scripts/run_experiment.py:13-22 ignores --config content, hardcodes periodicHill/kOmegaSST)",
+    "gap": "Arm names exist; no arm executes a swarm, ablation, or sparse regression. Configs carry no budget, seed, case, or solver settings."
+  },
+  {
+    "id": "P5-02",
+    "requirement": "S7.1 three seeds each, 9 runs, seeds 42/43/44 explicitly passed and logged; seed-reproducibility probe (plan l.439-440)",
+    "status": "SKELETON",
+    "evidence": "scripts/run_arms.py:17 SEEDS=(42,43,44), :20 summarize asserts len==3; probe exit 0 mock: swarm runs [5,6,7] etc. No run dir, events.jsonl, or seed log produced; scratch/probe_seed.py does not exist (probe exit 0); runs/ contains only .gitkeep + probe_s55/events.jsonl (5 ticks)",
+    "gap": "Seeds are constants in a formula, never passed to any runner, solver, or LLM session and never logged per run. 9 real runs: 0."
+  },
+  {
+    "id": "P5-03",
+    "requirement": "Science protocol: same solver budget per arm; baselines SST, a-priori-only best, sparse regression at same budget (spec l.277; plan l.423,429)",
+    "status": "MISSING",
+    "evidence": "Repo search (probe exit 0): no budget field in configs/experiments/*.yaml (2-line scaffolds); budgets.yaml solver_caps exist but no code in scripts/ reads budgets.yaml/cases.yaml (run_arms.py has no budget; run_experiment.py has no seed/budget/parallel hits)",
+    "gap": "No budget enforcement or accounting per arm; no SST or a-priori-only arm at all; RP2 same-budget comparison cannot be computed."
+  },
+  {
+    "id": "P5-04",
+    "requirement": "S7.1 run 3 arms x 3 seeds in parallel on two machines (plan l.423,460-461; spec l.335)",
+    "status": "MISSING",
+    "evidence": "scripts/run_arms.py:28-33 loops arms sequentially in-process, prints only; no parallelism, machine, session, run-dir, hash, or artifact code. Probe mock exit 0 prints 3 summary lines and writes nothing; runs/ has no arm run dirs",
+    "gap": "Entire execution harness missing beyond mock bookkeeping. Two-machine split unverifiable and unimplemented."
+  },
+  {
+    "id": "P5-05",
+    "requirement": "Stub-scan reconciliation: run_arms mock vs real - BOOKKEEPING-ONLY, NEVER REPORTABLE AS RESULTS (mock scores are len(arm)/seed formula; real returns [] + needs S1-S6)",
+    "status": "PRESENT_UNTESTED",
+    "evidence": "Round-2 r2p456-probe.py exit 0 via subprocess(timeout=120): --mock swarm mean6.0 runs[5,6,7], swarm_no_redteam 17.0, sparse_baseline 16.0; real mode all arms needs verified S1-S6. scripts/run_arms.py:29,33. Downgraded from round-1 VERIFIED per CH-03.",
+    "gap": "Justification for PRESENT_UNTESTED not SKELETON: summarize() bookkeeping (assert 3 seeds, mean/stdev) is real executable code re-executed here, so more than shape; but no pytest pass (pytest absent exit1), no candidate/case/solver/DNS content, mock numbers are formula artefacts and must never be quoted as results. Any results table citing them would be synthetic-as-real."
+  },
+  {
+    "id": "P5-06",
+    "requirement": "S7.2 locked milestones: exactly Milestone 1, Milestone 2, Final Champion via scripts/evaluate_locked.py, reasons logged, <=3 total (plan l.431-432,442; spec l.111,277)",
+    "status": "SKELETON",
+    "evidence": "scripts/evaluate_locked.py:8-9 LOG=runs/vault_access.log MAX_EVALS=3; :14-17 count_prior counts LOCKED_EVAL lines; :26-28 refuses at >=3; :30-31 appends 'LOCKED_EVAL milestone=.. reason=..'. Probe: runs/vault_access.log does not exist, so 0 evals recorded. Script was NOT run in this audit (would consume budget). --milestone is free text: Milestone1/2/Final names are never validated",
+    "gap": "Cap+log skeleton only. No milestone ever run, no milestone-name enforcement, counter is a deletable local text file (no append-only/hash protection), and DENIED lines from split_guard share the same log (count_prior correctly ignores them, but log integrity is unprotected)."
+  },
+  {
+    "id": "P5-07",
+    "requirement": "S7.2 locked evaluator actually scores locked cases with metric fixed in advance; board-only milestone results (spec l.97,111,173,277)",
+    "status": "MISSING",
+    "evidence": "scripts/evaluate_locked.py:32 prints 'Scoring runs in evaluator' but contains no scoring, metric, case list, model loading, or data read (full 35-line read). git -c safe.directory ls-files data/locked -> only data/locked/.gitkeep (existence noted only; contents never listed/opened). configs/cases.yaml:11-16 locked=square_duct,nasa_wall_mounted_hump (closure_challenge)",
+    "gap": "No locked dataset, no evaluator, no fixed metric, no scores. A run would log intent and exit 0 without evaluating anything - a false-positive milestone if ever invoked."
+  },
+  {
+    "id": "P5-08",
+    "requirement": "Locked-data guard: swarm paths into data/locked refused + logged; only dedicated evaluator may touch vault (plan l.45,85; spec l.111,173,276; S4.2)",
+    "status": "PRESENT_UNTESTED",
+    "evidence": "flowforge/data/split_guard.py:20-46 lexical ..-folding _is_locked + guard_path raises PermissionError and appends DENIED to runs/vault_access.log; probe exit 0: guard_path(data/locked/x,role=auditor)->PermissionError + DENIED line (log redirected to audit/probes temp, removed), data/raw/x.npy allowed. tests/unit/test_split_guard.py:9-35 codifies locked/root/traversal/log/allow (pytest absent, evidence pytest-run.txt exit 1). NOTE: _is_locked denies ANY path containing a 'locked' component (broader than data/locked), and no caller wires guard_path into agent tools; evaluate_locked.py itself never calls guard (by design, direct script) Round-2 CH-12: kept PRESENT_UNTESTED, not upgraded.",
+    "gap": "Guard function is real but unenforced at tool boundaries (no production caller found) and over-broad; evaluate_locked.py does not itself verify it is the evaluator or restrict --milestone callers. Leakage test exists only as unit code never run under pytest here."
+  },
+  {
+    "id": "P5-09",
+    "requirement": "S7.3 mesh refinement: double periodic-hill mesh for champion, worst-case error shift <2% (plan l.433-434; spec l.274,336)",
+    "status": "MISSING",
+    "evidence": "Probe regex mesh.*refin|refin.*mesh|2x|double.*resol over all *.py (excl audit/node_modules): 0 hits. No mesh-refinement script/test/notebook; openfoam/meshing/hill_geometry.py is analytic profile only; openfoam/templates/periodicHill/system/blockMeshDict is a single placeholder mesh (flat walls per audit/GATE.md). No champion exists to refine",
+    "gap": "No refined mesh, no coarse/fine pair, no error table, no 2% comparison. Entire S7.3 unimplemented."
+  },
+  {
+    "id": "P5-10",
+    "requirement": "Phase 5 gate: complete results table incl. losses, mean +/- spread across 3 seeds, wins/losses alike, figures from notebooks, every table labelled frozen|short|full (plan l.423,441,443,470; spec l.277,336-337)",
+    "status": "MISSING",
+    "evidence": "notebooks/ contains only .gitkeep (probe exit 0); no results table file anywhere (probe results_table search: only run_arms.py:5 docstring); no 'frozen |' label string in any *.py; runs/ has no scores. Mock summaries (P5-05) are the only mean/stdev ever produced and are formula artifacts, explicitly not results",
+    "gap": "Gate artifact absent: 0/9 real runs, no per-case errors, no losses to report, no figures, no frozen/short/full labelling (GATE.md frozen-RANS-only decision makes 'frozen' the only honest label once data exists)."
+  },
+  {
+    "id": "P5-11",
+    "requirement": "Champion reproduction: outsider runs scripts/reproduce_champion.py with logged champion hash, exact velocity errors <1e-5, from hashes alone, no re-fit (plan l.423,444; S7 guardrail l.440 byte-identical hashes)",
+    "status": "SKELETON",
+    "evidence": "scripts/reproduce_champion.py EXISTS (12 lines): :9-12 requires --champion-hash, prints 'Reproducing..from cached hashes...' then raise SystemExit('Needs S1-S3 verification first; hashes only, no re-fit.'). No champion hash exists anywhere (run_round returns expression/dl/worst_error, no hash; solver compute_run_hash exists flowforge/solver/runner.py:80-81 but no champion is stored). D5: live-LLM byte-identical hashes impossible; replay exists flowforge/agents/runtime/event_logger.py:49-76 (FLOWFORGE_REPLAY=1, miss=RuntimeError) but reproduce_champion never uses it",
+    "gap": "DECISION_NEEDED (D5): reproducibility must be defined as replay-mode reproduction (recorded responses + content hashes), not live re-calls. Script is a scaffold that always exits non-zero; no tolerance check, field comparison, or cache lookup."
+  },
+  {
+    "id": "P5-12",
+    "requirement": "Cross-session library (P3 verdict): spec 'Memory across sessions' l.179-195 - library/modules one file/module (expression, constants, gate, scope, provenance, evidence), lifecycle candidate->verified->champion/demoted, attacks only-grow + re-run on verified, rejected dedup, findings hypotheses, stale re-verification on solver/mesh/case change, board summary + theorist reuse",
+    "status": "MISSING",
+    "evidence": "library/{modules,attacks,rejected,findings,curriculum}/ each contain only .gitkeep (1 byte, probe + git ls-files exit 0). Repo-wide search (probe exit 0) for library load/save, verified/champion lifecycle, stale/re-verify: 0 implementation hits (only attacks.py:4 docstring 're-run against all verified modules' and run_arms docstring). Only library writer in codebase: flowforge/redteam/attacks.py:20-29 record_attack (broke-only, candidate[:8] filename overwrite, no score) with no production caller. No module type, loader, saver, lifecycle transition, staleness check, board injection, or dedup exists in flowforge/, scripts/, or tests/",
+    "gap": "P3 CONFIRMED: no cross-session library module exists at all. Every spec l.185-194 behaviour is absent; sessions cannot carry verified knowledge, so S7 arms would each start cold even if they ran."
+  },
+  {
+    "id": "P5-13",
+    "requirement": "D3 Closure Challenge provenance/overlap: train periodic_hill_re5600/re10595 vs Closure Challenge test (periodic hills, square duct, NASA hump, spec l.97); does periodic_hill_re10595 exist in curated dataset? (configs/cases.yaml; scripts/download_data.py)",
+    "status": "DECISION_NEEDED",
+    "evidence": "configs/cases.yaml:3-8 train=periodic_hill_re5600,re10595 source=curated; :15-20 locked=square_duct,nasa_wall_mounted_hump source=closure_challenge. scripts/download_data.py:20-25 CASES=(periodic_hill_re5600,periodic_hill_re10595,curved_step,converging_diverging_channel) written only by synthetic_fallback (:32-42, rng 42, (100,3) arrays); real path :53-56 exits 'needs Kaggle/Closure Challenge access'. data/raw has no manifest.json (probe) and only .gitkeep tracked; dataset absent so curated membership cannot be inspected. Spec l.97 says Closure Challenge test cases include periodic hills - same geometry/Re family as both train cases, differing at most by split label",
+    "gap": "DECISION_NEEDED: owner must prove, from the real curated-dataset manifest + Closure Challenge README/test list (outside this sandbox, no network), that re10595 (and re5600) train fields do not duplicate a Closure Challenge test periodic-hill case at same Re/geometry. Until then held-out claim for periodic hills is unproven; locked square_duct/hump are at least case-disjoint by name."
+  },
+  {
+    "id": "P5-14",
+    "requirement": "RP1/RP2/RP6 answers from Phase 5 data: red-team effect (arm1-arm2), LLM vs sparse (arm1/2-arm3), elegance-rule vs most-accurate on locked (spec l.289-295)",
+    "status": "MISSING",
+    "evidence": "No arm runs (P5-04), no locked scores (P5-07), no champion vs most-accurate pair (flowforge/elegance/engine.py:35-40 pick_champion implements 3%/min-DL rule in isolation, never fed locked candidates). RP3/RP4/RP5 inputs also absent in Phase 5 scope (no production-correction ablation, no composer score, no attack ranking)",
+    "gap": "No research question can be answered, even negatively. Elegance rule is unit-level code only; RP6 needs two locked selections scored under the <=3 budget - not planned in evaluate_locked.py (no candidate argument)."
+  },
+  {
+    "id": "P5-15",
+    "requirement": "Tests/Science + Numerical layers for Phase 5: science tests, mesh-refinement test, leakage test green (spec l.259-281; plan l.468-470)",
+    "status": "MISSING",
+    "evidence": "tests/science/ contains only .gitkeep (probe exit 0); no test references run_arms, evaluate_locked, reproduce_champion, or mesh refinement (search in tests/: only test_split_guard.py leakage unit). pytest/ruff/mypy all exit 1 absent (audit/evidence/pytest-run.txt, versions-env.json); import-smoke 47/56 (sympy/sklearn/tenacity missing)",
+    "gap": "No science regression guards the 3x3 protocol, the 3-eval cap, or the 2% mesh rule; even the existing split-guard test cannot run in this env."
+  },
+  {
+    "id": "P5-16",
+    "requirement": "Dependencies: S1-S6 verified before real arms (run_arms real-mode gate), dataset, Docker/OpenFOAM, API, frozen-RANS labelling (plan l.422-423,445; audit/GATE.md)",
+    "status": "BLOCKED_BY_ENV",
+    "evidence": "audit/GATE.md frozen-RANS-only: docker/uv exit 127, data/raw .gitkeep only, flat placeholder mesh, MODEL_API_KEY_set=false (audit/evidence/versions-env.json). Prior phases FAIL: Phase 3 gate FAIL audit/round-1/phase-3.md (no recorded break), S1-S3 solver/data unproven. run_arms.py:33 itself refuses real mode pending S1-S6",
+    "gap": "Phase 5 is blocked upstream, not merely unfinished: even a perfect arms harness would have no verified solver, dataset, champion pool, or library to run. Feature-freeze guardrail (plan l.445) also bars inventing new machinery in Phase 5 to bypass this."
+  },
+  {
+    "id": "P5-17",
+    "requirement": "OM-2 Agent-layer metrics tracked per prompt version: schema-valid rate, parse rate, duplicate rate, cost per round (spec Tests layer)",
+    "status": "MISSING",
+    "evidence": "r2p456-probe.py exit 0: metrics-keyword hits only docs/plans plan text and flowforge/agents/evals/thresholds.py:4 RESEARCH_MIN_PARSE_RATE=0.95 (a frozen threshold constant, not tracking). No per-prompt-version metric collection, storage, or report in flowforge/scripts; round-1 had no OM-2 row (challenges.md OM-2). Schemas exist (agents/schemas.py) but metrics do not.",
+    "gap": "No metric is computed per prompt version; cannot detect prompt regressions or cost drift. Add metrics emitter keyed by prompt version/hash before claiming agent-layer quality."
+  }
+]

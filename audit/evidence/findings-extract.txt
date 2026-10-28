@@ -1,0 +1,42 @@
+--- PHASE 0 ---
+| H3 (no `uv.lock`; pip folders) | CONFIRMED | `Test-Path uv.lock` = False live; [versions-env.json:87](../evidence/versions-env.json:87) `uv_lock_exists=false`; 7 pip dirs at root live: `pip-build-tracker-*` ×2, `pip-ephem-wheel-cache-*` ×2, `pip-install-*` ×2, `pip-target-*` ×1. S0.1 pass criteria (plan L191) unmet. |
+| H5 (no `AGENTS.md`) | CONFIRMED | `Test-Path AGENTS.md` = False live. Only a planned file in [hygiene/REPORT.md:17](../hygiene/REPORT.md:17), never created. |
+| H6 (plan L3 absolute spec link) | CONFIRMED | [plan:3](../../docs/plans/2026-10-26-flowforge-v2-implementation-plan.md:3) links `/C:/Users/juanc/Desktop/FlowForge/v2%20Build%20spec.md`. Same defect in [README.md:2](../../README.md:2) (both links absolute) — breaks on the second machine. |
+| C1 (`coder=muse-code`; plan `muse-code`/`wonder` vs documented `muse-spark-1.3`/`muse-spark-1.3-contributor`/`muse-wonder-1.0`) | CONFIRMED → DECISION_NEEDED (P0-18) | [budgets.yaml:5](../../configs/budgets.yaml:5) `coder: muse-code`; plan L52 `muse-code, wonder`, plan L5 `Wonder`; [client.py:24](../../flowforge/agents/runtime/client.py:24) prices `muse-code` + `wonder`. Neither `muse-code` nor 
+| C2 (tolerances not in `configs/`) | CONFIRMED | Live `configs/` = `budgets.yaml`, `cases.yaml`, `experiments/{baseline,sparse_baseline,swarm,swarm_no_redteam}.yaml` only — no tolerances file. Values scattered: [engine.py:11–12](../../flowforge/elegance/engine.py:11) 1%/3%, [test_identity.py:15](../../tests/integration/test_identity.py:15) `1e-6`, [test_oracle.py:17](../../tests/integration/test_
+--- PHASE 1 ---
+**Gate verdict: FAIL (offline) / UNVERIFIABLE as solver claim.** Frozen-RANS-only confirmed (see P4). Do not claim full-solver Phase 1.
+| P1 data/raw only .gitkeep | CONFIRMED | Probe `data_raw=[data/raw/.gitkeep]`; no DNS/RANS fields |
+| P4 gate frozen-only | CONFIRMED | GATE.md decision + this session: gate_logic exit 0 (logic only), pytest exit 1, Docker 127, oracle solver skipped. Hard Decision Rule (plan L285) fires |
+| D4 flat placeholder vs curved hill | CONFIRMED, DECISION_NEEDED | `blockMeshDict:10-11` self-labels flat placeholder; `hill_geometry.py` exists but generates no mesh. Owner A decision required before any baseline comparison |
+| P2 templates empty | PARTLY REFUTED | periodicHill NOT empty (12 files, probe list) — `project_status.md:45,66-68` wrong. Other templates (channel/bump/flatPlate/squareDuct) only `.gitkeep` — that part goes to Phase 2/3, noted here |
+| C3 client params used | PARTLY CONFIRMED (gap) | Used: `max_tokens` (passed), hardcoded `response_format=json_object`. NOT used: `temperature`, `reasoning_effort`/`reasoning`, per-role `budgets.yaml` (never read; AST probe). Global $50 limit only, fixed $0.01 pre-estimate |
+- Counts: VERIFIED 3 (P1-02, P1-08, P1-10), PRESENT_UNTESTED 4 (P1-04, P1-06, P1-16, P1-17), SKELETON 3 (P1-07, P1-12, P1-18), MISSING 0, BLOCKED_BY_ENV 7 (P1-01, P1-05, P1-09, P1-11, P1-13, P1-14, P1-15), DECISION_NEEDED 1 (P1-03). Total 18.
+--- PHASE 2 ---
+- **D1 — DECISION_NEEDED.** [grammar.py:37-44](../../flowforge/dsl/grammar.py:37): `div(a,b)=a/(b**2+1e-4)`, `sqrt(a)=sqrt(abs(a)+1e-4)`. Plan S3.3 mandates exactly this ([plan:315,329](../../docs/plans/2026-10-26-flowforge-v2-implementation-plan.md:315)); spec requires *only smooth operations* ([spec:141](../../v2%20Build%20spec.md:141)). `abs` has a kink at 0; `div` behaves as `a/b^2` for large 
+- **D2 — DECISION_NEEDED.** [frozen_rans.py:13-18](../../flowforge/physics/frozen_rans.py:13) `DeltaPk_target=-2k(a:S)` matches plan S3.2 ([plan:312](../../docs/plans/2026-10-26-flowforge-v2-implementation-plan.md:312)) and test expects `-0.4` ([test_physics.py:49](../../tests/unit/test_physics.py:49)), but the candidate-side definition is `DeltaPk=+2k(a:S)*h` ([plan:314](../../docs/plans/2026-10-
+- **D6 — DECISION_NEEDED.** Probe-verified: pure rotation (`s=0, w!=0`) gives `I2=-0.5`, `T4_max=0.1667`, `T1=0`. Plan MUST ([plan:331](../../docs/plans/2026-10-26-flowforge-v2-implementation-plan.md:331)) says at `S=0` invariants `I1,I3,I4,I5` vanish — true, but a `g(I2)*T4` term in the full candidate format ([evaluate.py](../../flowforge/dsl/evaluate.py:26) currently T1-only, masking this) would
+- **C2 — CONFIRMED.** No `configs/tolerances.yaml`. Tolerances are code constants: [engine.py:11-12](../../flowforge/elegance/engine.py:11) 1%/3%, [grammar.py:21](../../flowforge/dsl/grammar.py:21) 1e-4, [tensors.py:56](../../flowforge/physics/tensors.py:56) 1e-4, [engine.py:43,56](../../flowforge/elegance/engine.py:43) 1e-8, duplicated in `agents/harness/symbolic/tasks.py:6`. Plan:84 requires the
+- **C3 — CONFIRMED (Phase 2 slice).** [prompts/*.yaml](../../prompts/board.yaml) and [budgets.yaml](../../configs/budgets.yaml) carry `temperature`/`reasoning` per role; [client.py](../../flowforge/agents/runtime/client.py) `complete()` sends only `model/messages/max_tokens/response_format={type:json_object}` — no temperature/reasoning, no JSON-schema mode. Unverified against the live endpoint (no
+- **P2 — CONFIRMED.** `openfoam/templates/{channel,flatPlate,bump,squareDuct}/` contain only `.gitkeep`. Canonical channel/flatPlate cases do not exist; rung2/3 have nothing real to run.
+Counts (18 rows): VERIFIED 2 (P2-10, P2-16), PRESENT_UNTESTED 4 (P2-01,05,09,12), SKELETON 5 (P2-04,11,13,14,15), MISSING 2 (P2-17,18), BLOCKED_BY_ENV 2 (P2-07,08), DECISION_NEEDED 3 (P2-02,03,06 — P2-03 also env-blocked). Gate: **UNVERIFIABLE**.
+--- PHASE 3 ---
+BLOCKED_BY_ENV 1 (P3-16), DECISION_NEEDED 0 rows (one decision
+--- PHASE 4 ---
+Exact gate (spec:331; plan S6 acceptance): *a composed closure is scored on all training flows.* Verdict **FAIL** (not UNVERIFIABLE: the blockers are proven by execution, not merely unobserved). Evidence: (1) no fitting and no joint composite exist (P4-03/P4-04), so there is no composed closure; (2) no production caller loads the two training cases (`periodic_hill_re5600`, `periodic_hill_re10595` 
+- **D5 reproducibility — partly applicable, currently moot, DECISION_NEEDED when wired.** The composer math is deterministic (probe `deterministic_D5core` PASS: byte-identical repeat), so a fitted `(w,b)` + recorded module hashes would reproduce exactly. But the spec's composer is "Muse Spark 1.3 plus gate fitting": if the LLM proposes modules/gates, live calls are stochastic and no seed gives byt
+- **C2 tolerances in configs — CONFIRMED (Phase-4 slice).** The +16-bit gate penalty exists only as [gates.py:13](../../flowforge/composer/gates.py:13); probe `penalty_not_in_configs` PASS (no gate/16 key in `configs/`). Same for the 3%/1% champion/snap constants ([engine.py:11-12](../../flowforge/elegance/engine.py:11)). The values (16 bits, 3%, 1%) are specified and need no new decision; their l
+Counts (12 rows): VERIFIED 2 (P4-01, P4-02), PRESENT_UNTESTED 2 (P4-07, P4-12), SKELETON 2 (P4-04, P4-09), MISSING 6 (P4-03, P4-05, P4-06, P4-08, P4-10, P4-11), BLOCKED_BY_ENV 0 as primary status (P4-12 carries a BLOCKED_BY_ENV component: pytest absent), DECISION_NEEDED 0 as primary status (D5 design constraint noted in P4-09). Gate Phase 4: **FAIL**.
+--- PHASE 5 ---
+- **P3 (no cross-session library module) — CONFIRMED.**
+- **D3 (Closure Challenge overlap) — DECISION_NEEDED.**
+- **D5 (byte-identical hashes, live LLM) — DECISION_NEEDED.**
+- **H4 (project_status.md claims) — partly CONFIRMED (sampled).**
+(P5-16), DECISION_NEEDED 1 (P5-13; D5 decision owed inside P5-11).
+(P5-12, P3 CONFIRMED); (4) mesh-refinement check absent (P5-09);
+--- PHASE 6 ---
+| H4 | CONFIRMED | `estructura.txt` invalid UTF-8, predates `audit/`, lists transient `pip-*` dirs absent from [tree.txt](/C:/Users/juanc/Desktop/FlowForge/audit/evidence/tree.txt:1); `project_status.md` false on templates/Make/scripts/solver (P6-13) |
+| H3 | CONFIRMED | Probe: `uv.lock`/`.venv` absent, `uv` not on PATH (P6-11) |
+| H6 | CONFIRMED (sample) | README.md:3 itself uses absolute `C:/Users/...` links |
+| P1/P4 | CONFIRMED / BLOCKED_BY_ENV | No dataset or Docker, so no Phase 5 results exist to package (P6-12) |
+| D5 | DECISION_NEEDED | Only replay gives reproducibility; `reproduce_champion.py` implements none of it (P6-10) |

@@ -1,0 +1,93 @@
+[
+  {
+    "id": "P4-01",
+    "requirement": "S6.2 gated formula KERNEL ONLY (narrowed Round-2): a_comp=sigma(w.I+b)*M1+(1-sigma)*M2, sigma=sigmoid, scalar I broadcast (plan docs/plans/2026-10-26-flowforge-v2-implementation-plan.md:399 S6.2). Penalty-in-selection and all-flows scoring are NOT in this row (P4-05/P4-06).",
+    "status": "VERIFIED",
+    "evidence": "Round-2 probe audit/probes/r2p456-probe.py exit 0: compose(ones,zeros,[0,1],w=1,b=0)=[0.5,0.731059] matches independent sigmoid oracle; gates.py:16-18,25-48. Kernel held per challenges.md CH-06 held part.",
+    "gap": "Kernel only: scalar w,b and single scalar I, no vector w.I. Saturation clip-approximate. Downstream defects excluded from this narrowed verdict and carried in P4-05 (penalty dropped) and P4-06 (zip drops last flow)."
+  },
+  {
+    "id": "P4-02",
+    "requirement": "S6.2 +16 bits DL penalty RETURNED per active gate (narrowed Round-2 to return-value only; application in selection is P4-05) (plan S6.2, FORBIDDEN Free Gating).",
+    "status": "VERIFIED",
+    "evidence": "r2p456-probe.py exit 0: compose penalty=16.0; evaluate 3 modules dl_penalty_bits=32.0 n_gates=2; gates.py:13,20-22,48.",
+    "gap": "VERIFIED only as returned number. Penalty is computed then dropped before description_length/pick_champion (probe dl_params=[n_nodes,constants], dl_has_gate=False) - see P4-05 MISSING. Always charged even if w=0 makes gate constant."
+  },
+  {
+    "id": "P4-03",
+    "requirement": "Gate FITTING: optimizer fitting (w,b) on training flows (spec Phase 4 l.330 composer with gate fitting; roles table Composer+fit_gates tool; folder composer/gated composition, gate fitting; plan S6 composer + gate fitting). Dep: P4-01,P4-06.",
+    "status": "MISSING",
+    "evidence": "Probe exit 0: no_fit_gates_anywhere + no_optimizer_in_composer PASS. Repo search (python rglob flowforge/tests/scripts/configs/prompts): compose( appears only in gates.py:25, evaluate.py:20 and two tests; 'fit_gates' appears nowhere in flowforge/ (only spec/plan text); gates.py/evaluate.py contain no scipy/minimize/least_squares/grid/search; compose(a1,a2,gate_input,w,b) and evaluate_composition(...,w,b) merely take w,b as caller inputs. flowforge/agents/tools/registry.py registers only search_cards+fit_constants (no fit_gates).",
+    "gap": "Entire fitting layer absent: no objective, no optimizer, no fitted-gate artifact, no seed/determinism spec for fitting. This is the central Phase-4 gap; without it S6.2 is an evaluator for hand-supplied gates, not a composer."
+  },
+  {
+    "id": "P4-04",
+    "requirement": "Joint composition of >=2 surviving modules into ONE composite closure (spec l.330, l.139; plan S6.2 combine surviving modules). Dep: P4-01, P4-10.",
+    "status": "SKELETON",
+    "evidence": "flowforge/composer/evaluate.py:14-31: loop i in range(len(modules)-1) makes independent pairwise blends preds[i]=compose(modules[i],modules[i+1],gate_inputs[i],w,b) with the same (w,b); returns only {worst_error,best_single_worst,dl_penalty_bits,beats_single,n_gates} \u00e2\u20ac\u201d probe evaluate_no_composite_output PASS: no composite array/closure is ever produced or returned. compose itself (gates.py:25) blends exactly 2 modules.",
+    "gap": "No recursive/joint composition (e.g. g1*M1+(1-g1)*(g2*M2+(1-g2)*M3)), no per-gate (w_i,b_i), no composite expression/field output for the ladder/solver/library. Pairwise preds compared to targets[i] while single_errors compares modules[i] to targets[i] (evaluate.py:23-24) \u00e2\u20ac\u201d mismatched comparands."
+  },
+  {
+    "id": "P4-05",
+    "requirement": "Elegance integration: gate penalty applied in description_length and champion rule (min DL within 3% of best worst-case) so gates cannot be free in selection (spec l.213-227,229; plan FORBIDDEN Free Gating). Dep: P4-02, Phase-2 elegance P2-05.",
+    "status": "MISSING",
+    "evidence": "flowforge/elegance/engine.py:15-17 description_length(n_nodes,constants) has no gate/n_gates parameter (probe dl_no_gate_param PASS; 'gate' absent from engine.py); :36-40 pick_champion consumes caller-supplied dl only. flowforge/orchestrator/round.py:57-62 enriches champion pool with description_length(complexity(expr),[]) \u00e2\u20ac\u201d constants always empty and no +16*n_gates \u00e2\u20ac\u201d and round.py never imports composer. Probe dl_example description_length(5,[0.5])=22.585 with no gate term possible.",
+    "gap": "A gated composite, if one existed, would enter pick_champion with the same DL as a single closure: the +16-bit penalty is computed in evaluate.py and then dropped. Champion rule (3%/min-DL, engine.py:12,36-40) is correct in isolation (Phase-2 P2-05) but composer-blind."
+  },
+  {
+    "id": "P4-06",
+    "requirement": "Phase-4 GATE: composed closure scored on ALL training flows (spec l.331; plan S6 acceptance scored on all training flows, Nov 1 gate; configs/cases.yaml train = periodic_hill_re5600 + periodic_hill_re10595). Dep: P4-03,P4-04,P4-10, Phase-2 ladder/data.",
+    "status": "MISSING",
+    "evidence": "evaluate.py:14 signature takes caller-built lists (modules,gate_inputs,targets) \u00e2\u20ac\u201d no case registry, Zarr or flow loading; nothing in flowforge/ calls evaluate_composition (search: only tests/unit/test_field_io_composer.py:27). Probe exit 0: train_cases=[periodic_hill_re5600,periodic_hill_re10595] parsed from configs/cases.yaml, but data/processed=[.gitkeep] only and library/modules=[.gitkeep] only, so no training targets or modules exist on disk. evaluate bug (probe evaluate_drops_last_target PASS): errors=zip(preds,targets) at evaluate.py:23 silently drops targets[-1] (3 zero modules vs targets[0,0,99] -> worst_error=0.0, beats_single=True spuriously). Round-2 r2p456-probe.py exit 0 re-proved zip bug: 3 zero modules targets [0,0,99] -> worst_error=0.0 best_single_worst=9801.0 beats_single=True dl=32.0 (evaluate.py:23 zip(preds,targets) drops last flow).",
+    "gap": "Gate FAIL (see md): no composed closure, no per-training-flow score table, no minimax/SST-normalised worst-case (evaluate uses raw mean-MSE max, not ladder minimax_score ladder.py:17-21), and the truncation bug would hide the last flow even if lists were built. Label would be frozen at best (GATE.md frozen-only). CH-06 UPHELD: fix zip/comparand with last-flow regression test before any upgrade."
+  },
+  {
+    "id": "P4-07",
+    "requirement": "RP4 cut rule: composition must beat best single closure or gates are dropped / best single shipped (spec RP4 l.292; plan FORBIDDEN Do NOT block Nov 1 Gate cut order; evaluate docstring beats-single-or-rejected). Dep: P4-06.",
+    "status": "PRESENT_UNTESTED",
+    "evidence": "flowforge/composer/evaluate.py:24-30 returns beats_single = max(errors) < max(single_errors) and dl_penalty_bits (cut signal present in code). Probe shows it fires (beats_single=True) \u00e2\u20ac\u201d but spuriously under the truncation demo (P4-06), proving the signal is not trustworthy as written. No caller consumes beats_single; no decision log, no fallback-to-single code path anywhere (search: beats_single only in evaluate.py + test asserting only penalty>0). Round-2 CH-12: kept PRESENT_UNTESTED, not upgraded (pytest exit 1 in r2p456-probe).",
+    "gap": "Rule is a returned boolean, not an enforced decision: nothing drops gates, ships the single champion, or logs the Nov-1 keep/cut decision. Comparison is also contaminated by P4-04/P4-06 comparand+truncation flaws and ignores DL (a composite 1% better at +32 bits still 'beats'). Needs a DL-aware, decision-logged gate after P4-03/P4-06 are fixed."
+  },
+  {
+    "id": "P4-08",
+    "requirement": "Orchestrator round Composer step reachability: round step 8 Composer combines surviving modules and scores composition (spec One round step 8; round.py docstring Board->...->Composer). Dep: Phase-2 round P2, P4-03.",
+    "status": "MISSING",
+    "evidence": "flowforge/orchestrator/round.py:33-74 run_round calls only synthetic_fields + run_ladder + pick_champion; probe round_never_calls_compose PASS (round_imports_composer=False, no compose( call; 'Composer' occurs only in the :3 docstring). Who calls compose()? Only evaluate_composition (evaluate.py:20) and tests (test_s55_s6.py:23, test_field_io_composer.py via evaluate). Who calls evaluate_composition? No production code. Phase-2 md reachability table already showed run_round is mock/synthetic-only with no event log.",
+    "gap": "Composer step is unreachable in any session: no multi-group session, no survivor hand-off from ladder rung3/library to composer, no composition event in the event log. Adding the call requires P4-03 fitting + P4-10 module source first; wiring alone would compose synthetic T1 fields, not closures."
+  },
+  {
+    "id": "P4-09",
+    "requirement": "Composer agent: Muse Spark + CompositionPlan schema + fit_gates tool + prompt, proposing gated compositions (spec roles table; prompts/composer.yaml; budgets composer role). Dep: agents runtime (Phase 2), P4-03.",
+    "status": "SKELETON",
+    "evidence": "Present shape: flowforge/agents/schemas.py:83-89 CompositionPlan{modules:list[str] min 1, gates:list[dict]} registered as composer in ROLE_SCHEMAS:88; prompts/composer.yaml:1-8 (8 lines, 'Combine surviving modules... +16 bits... JSON only'); configs/budgets.yaml:9 composer muse-spark-1.3. Absent: fit_gates tool (registry.py has search_cards/fit_constants only; probe registry_no_fit_gates PASS), any caller invoking the composer role, any validation that gates entries carry w/b/I or that modules resolve to library entries (gates:list[dict] is untyped). tests/unit/test_runtime.py:122 only round-trips a dummy composer payload.",
+    "gap": "Agent is a schema+stub prompt with no tool and no invocation. D5 (see md): if this LLM path is ever wired, module/gate proposals are stochastic \u00e2\u20ac\u201d reproducibility must come from replay/content-hash of the recorded CompositionPlan + deterministic fitting (seed 42), never from live-LLM seed identity. gates:list[dict] needs a typed GateSpec (module ids, invariant, w, b) before fitting can consume it."
+  },
+  {
+    "id": "P4-10",
+    "requirement": "Input pool: surviving/verified modules from library/modules with expression, constants, gate, scope, provenance, evidence (spec Memory l.186, composer folder; plan S6 surviving modules). Dep: Phase-2/5 library lifecycle (P3 in findings).",
+    "status": "MISSING",
+    "evidence": "Disk check probe exit 0: library/modules=[.gitkeep] only (also library/findings=[.gitkeep]); no code reads library/modules (search: no loader; composer takes raw np.ndarray lists, not module records). Phase-2 md P3: no module writer or board-injection path exists. evaluate.py modules are anonymous arrays with no id/expression/constants/scope, so a composite cannot be rendered, hashed, codegen'd or stored back as a module.",
+    "gap": "Nothing to compose: no verified module has ever been written, and the composer API cannot accept one if it were (needs a Module record -> field evaluator bridge, e.g. via dsl/evaluate candidate_anisotropy per flow). Blocks P4-06 gate independently of fitting."
+  },
+  {
+    "id": "P4-11",
+    "requirement": "Configs: gate penalty (16 bits) and champion/snapping tolerances frozen in configs/ before experiments (plan l.84 scientific guardrails, S6 guardrails; spec l.227 margin/scoring fixed before experiments). Dep: Phase-2 C2.",
+    "status": "MISSING",
+    "evidence": "Probe penalty_not_in_configs PASS: no '16'/'gate' penalty key in any configs/ file (configs/ = budgets.yaml, cases.yaml, experiments/*.yaml scaffold comments only; experiments/swarm.yaml is 2 lines). GATE_DL_PENALTY_BITS lives only as code constant gates.py:13; likewise CHAMPION_MARGIN/SNAP_TOLERANCE in elegance/engine.py:11-12. Round-2 findings C2 already CONFIRMED: no configs/tolerances.yaml, tolerances scattered in code (gates.py:13 listed explicitly).",
+    "gap": "C2 CONFIRMED for Phase 4: the 16-bit penalty, 3% margin and 1% snap tolerance are code constants, not frozen config; an experiment cannot vary/audit them and two machines could silently diverge. Fix is a configs/tolerances.yaml (+ gate_bits) loaded by gates.py/engine.py with a config-hash in the run log \u00e2\u20ac\u201d semantics of the values themselves need no new decision (16/3%/1% are already specified)."
+  },
+  {
+    "id": "P4-12",
+    "requirement": "Tests: composer formula, penalty, evaluation/cut behaviour covered and passing (plan S6 acceptance; tests/unit). Dep: P4-01..P4-07.",
+    "status": "PRESENT_UNTESTED",
+    "evidence": "tests/unit/test_s55_s6.py:21-26 test_gate_formula_and_penalty (0.5 at I=0,w=1,b=0; pen==16.0) and tests/unit/test_field_io_composer.py:25-33 test_composer_pays_gate_penalty (3 zero modules -> dl>0, n_gates==2). audit/evidence/import-smoke.txt: composer/gates+evaluate OK (numpy-only). Observed here: python -m pytest tests/unit/test_s55_s6.py tests/unit/test_field_io_composer.py -q via subprocess timeout=120 -> exit 1 'No module named pytest' (matches audit/evidence/pytest-run.txt exit=1; pytest declared in pyproject dev deps but no uv.lock/.venv, versions-env.json). Probe independently verified the formula/penalty assertions' substance exit 0. Round-2 r2p456-probe pytest exit 1 No module named pytest; CH-12 kept PRESENT_UNTESTED.",
+    "gap": "No observed pytest pass (BLOCKED_BY_ENV component: pytest absent is env, declared dep, not a code defect). Coverage gaps even once pytest runs: no fitting test (none possible, P4-03), no truncation/last-flow test (would fail today, P4-06), no joint-composition, broadcast-mismatch, non-finite, DL-in-champion or all-training-flows test. test_composer_pays_gate_penalty uses identical zero modules/targets so beats_single and errors are vacuous (0<0 False, unasserted)."
+  },
+  {
+    "id": "P4-13",
+    "requirement": "OM-7 Phase-4 feature freeze as dated gate artefact (Nov 1 EOD freeze: no refactoring/new roles/algorithm changes after freeze; plan:445,459)",
+    "status": "MISSING",
+    "evidence": "r2p456-probe.py exit 0: feature-freeze hits only in docs/plans/2026-10-26-flowforge-v2-implementation-plan.md:445,459 (definition), no dated freeze artefact/tag/manifest in docs/configs/flowforge/scripts; round-1 had no OM-7 row (challenges.md OM-7).",
+    "gap": "No artefact proves freeze date, frozen commit/hash, or scope. Add dated freeze record (commit hash + date) at Phase-4 gate; until then gate cannot be audited."
+  }
+]

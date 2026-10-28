@@ -1,0 +1,8 @@
+# tree-before fingerprint (excludes audit/ and .muse/) v2 exact
+[status]
+?? estructura.txt
+git_diff_sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+git_diff_cached_sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+[untracked]
+estructura.txt
+untracked_content_sha256=52a46e3d5de63411f0dc3864c0e3ae92169ecc126c555d49dcd954a090bc41e1

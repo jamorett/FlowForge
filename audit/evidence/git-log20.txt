@@ -1,0 +1,3 @@
+$ git -c safe.directory=C:/Users/juanc/Desktop/FlowForge log --oneline -20
+exit=0
+6890af3 FlowForge v2: S0-S7 implementation

@@ -1,0 +1,8 @@
+configs tracked+on-disk: ['configs\\budgets.yaml', 'configs\\cases.yaml', 'configs\\experiments\\baseline.yaml', 'configs\\experiments\\sparse_baseline.yaml', 'configs\\experiments\\swarm.yaml', 'configs\\experiments\\swarm_no_redteam.yaml']
+ui/dist exists: True
+tracked node_modules count check in git-ls-files.txt
+ui/node_modules tracked lines: 4683
+ui/dist tracked lines: 62
+__pycache__ tracked lines: 0
+runs/probe_s55 tracked: ['scratch/probe_s55_s6.py']
+scratch tracked: ['scratch/probe_env.py', 'scratch/probe_runtime_ladder.py', 'scratch/probe_s55_s6.py', 'scratch/probe_solver.py', 'scratch/probe_sympy.py', 'scratch/probe_ws_pacing.py', 'scratch/probe_ws_stdlib.py', 'scratch/probe_zarr_store.py']

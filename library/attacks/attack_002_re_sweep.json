@@ -1,0 +1,14 @@
+{
+  "id": "atk_002_re_sweep",
+  "name": "High Reynolds Number Stability Sweep",
+  "role": "redteam",
+  "base_case": "periodic_hill_re10595",
+  "parameter_sweeps": {
+    "reynolds_number": 37000,
+    "slope_steepness_alpha": 1.0
+  },
+  "target_champions": ["mod_nonlinear_eddy_viscosity"],
+  "intended_failure_mode": "Quadratic invariant scaling without denominator damping causes unbounded eddy viscosity blowup",
+  "status": "active_validation_only",
+  "created_at": "2026-10-27T19:30:00Z"
+}

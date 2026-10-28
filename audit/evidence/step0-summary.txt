@@ -1,0 +1,13 @@
+git branch: exit=0 lines=1
+git status: exit=0 lines=2
+git log20: exit=0 lines=1
+git ls-files: exit=0 lines=4917
+fingerprint: status_lines=1 diff_sha256=e3b0c44298fc untracked=1
+tree: 306 files (excl ui/node_modules,.git)
+stub-scan: 40 hits
+collect: exit=1
+run: exit=1
+ruff: exit=1
+mypy: exit=1
+import-smoke: exit=0 ok=47/56
+versions: exit=127 FileNotFoundError: [WinError 2] The system cannot find the file specified | exit=127 FileNotFoundError: [WinError 2] The system cannot find the file specified | exit=0 v24.22.0

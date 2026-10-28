@@ -1,0 +1,10 @@
+{
+  "id": "find_001_shear_layer_curvature",
+  "title": "Streamline Curvature Damping in Separated Shear Layers",
+  "author_role": "analyst",
+  "flow_case": "periodic_hill_re5600",
+  "observation": "Standard SST overpredicts turbulent kinetic energy in the curved detached shear layer, leading to premature reattachment at x/H=3.8 instead of DNS x/H=4.6.",
+  "recommended_mechanism": "streamline_curvature",
+  "evidence": "Error map highlights peak eddy viscosity error concentrated along maximum streamline curvature contour.",
+  "created_at": "2026-10-27T16:00:00Z"
+}

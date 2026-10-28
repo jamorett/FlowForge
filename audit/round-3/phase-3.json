@@ -1,0 +1,114 @@
+[
+  {
+    "id": "P3-01",
+    "requirement": "S6.1 red-team generator FUNCTION ONLY: generate_attacks/FlowSpec deform periodic-hill alpha in [0.5,1.5], sweep Reynolds, validation-only (spec Phase 3; plan S6.1). Downstream meshing/scoring/breaking is NOT part of this VERIFIED claim (see P3-02/P3-04/P3-14).",
+    "status": "VERIFIED",
+    "evidence": "flowforge/redteam/generator.py:14-41 FlowSpec asserts kind/split/alpha/Re + generate_attacks cross-product; probe via python subprocess timeout=120 exit 0: 12 specs, alphas [0.5,0.75,1.25,1.5], Re [5600,10595,20000], splits={validation}; alpha=2.0 and split=train refused (tests/unit/test_s55_s6.py:8-19 codifies, pytest not runnable) Round-2 fresh inline: generate_attacks()=12 specs alphas [0.5,0.75,1.25,1.5]; also called by api/server.py matrix(). Function held per challenges.md s4.",
+    "gap": "CH-07 UPHELD downstream: generator held but downstream dead - no FlowSpec ever meshed/solved/scored, hill_height/wall_points zero production callers, run_attack_suite/record_attack zero production callers, library/attacks/ only .gitkeep. Phase-3 gate unreachable (P3-14 MISSING). VERIFIED narrowed to generator function only."
+  },
+  {
+    "id": "P3-02",
+    "requirement": "S6 bumps / flows beyond the data + scripted meshing for generated flows (spec l.324 scripted meshing; plan l.394, S6.1 bumps)",
+    "status": "SKELETON",
+    "evidence": "openfoam/meshing/hill_geometry.py:13-25 analytic hill_height/wall_points only (probe exit 0: wall_points(5).shape=(5,2)); openfoam/templates/periodicHill/system/blockMeshDict:8-9 header 'Periodic hills placeholder mesh (flat walls; hill profile via hill_geometry.py in S1 refinement)'; repo-wide caller search: hill_height/wall_points called only by tests/unit/test_codegen_geometry.py:5,21-23",
+    "gap": "Nothing wires alpha into blockMeshDict/OpenFOAM cases; no generated mesh exists for any of the 12 specs; hill_height is base**alpha (probe: sampled max falls 0.985->0.955 as alpha 0.5->1.5), not a validated steepness deformation of the dataset profile"
+  },
+  {
+    "id": "P3-03",
+    "requirement": "Permanent attack suite in library/attacks/: every broken candidate recorded, suite only grows, re-run against all verified modules (spec l.186; plan S6.1 record broken candidates)",
+    "status": "SKELETON",
+    "evidence": "flowforge/redteam/attacks.py:20-29 record_attack writes attack_{candidate[:8]}.json only when broke (probe exit 0 in tmp dir: broke=False->None, broke=True->file, split=train->AssertionError); library/attacks/ on disk contains only .gitkeep (1 byte, ls exit 0); caller search: record_attack called by no production code (only tests/unit/test_render_attacks_ingest.py:15-23 and a docstring in generator.py:6)",
+    "gap": "Zero attacks ever recorded; no code reads library/attacks back or re-runs the suite; filename keyed by candidate[:8] overwrites per candidate and JSON stores no score/baseline/flow hash, so suite history cannot accumulate per flow"
+  },
+  {
+    "id": "P3-04",
+    "requirement": "Attack execution: score candidates on generated flows and detect a break (plan S6 acceptance breaks >=1; attacks.py broke rule)",
+    "status": "PRESENT_UNTESTED",
+    "evidence": "flowforge/redteam/attacks.py:32-45 run_attack_suite (apriori_mse per target) + broke_threshold (any flow >1.5x baseline); probe exit 0 on synthetic arrays: run_attack_suite={'f1':0.0,'f2':1.0}, broke 3.0-vs-1.0 True / 1.2 False; tests/unit/test_render_attacks_ingest.py:26-28 codifies threshold; pytest itself exit 1 'No module named pytest' (audit/evidence/pytest-run.txt)",
+    "gap": "run_attack_suite has zero callers anywhere; it passes the same invariants/basis for every flow (per-flow physics never varies); no real candidate, DNS target or solver field was ever attacked CH-09 adjacent noted: attack scoring relies on ladder apriori path where exceptions become DIVERGED_PENALTY (ladder.py), masking broken-env failures as candidate failures."
+  },
+  {
+    "id": "P3-05",
+    "requirement": "PyVista off-screen renders to PNG for error maps and UI (spec l.33,79,243,324; plan S6 renders)",
+    "status": "SKELETON",
+    "evidence": "flowforge/render/error_map.py:17-42 error_field + render_png: genuine stdlib zlib/struct PNG + .npy sidecar (probe exit 0: magic b'\\x89PNG\\r\\n\\x1a\\n', .npy written); pyproject.toml:23 declares pyvista>=0.43 but probe 'import pyvista' -> ModuleNotFoundError exit captured in same probe; caller search: render_png called only by tests/unit/test_render_attacks_ingest.py:11",
+    "gap": "No PyVista code path exists: error_map.py:1-5 docstring promises render_mesh_png which is not defined (only error_field/_png_bytes/render_png); no mesh render was produced; UI never receives a PNG (CandidateInspector renders no img)"
+  },
+  {
+    "id": "P3-06",
+    "requirement": "SAM 3.1 client: segment error regions, map masks to mesh cells (spec l.35,79,243; plan l.394 '+SAM only if endpoint confirmed')",
+    "status": "MISSING",
+    "evidence": "Repo search for SAM/sam_: only flowforge/render/__init__.py:1 docstring 'PyVista renders, SAM 3.1 client, region masks' and spec/plan text; no client module, no endpoint config, MODEL_API_KEY_set=false (audit/evidence/versions-env.json)",
+    "gap": "No client and no recorded confirm-or-cut decision on the endpoint; per plan cut order (SAM is cut #2) this needs an explicit DECISION_NEEDED logged by the lead"
+  },
+  {
+    "id": "P3-07",
+    "requirement": "UI bootstrap: ui/package.json Vite+React+TS+TanStack Query+Tailwind+Plotly.js+KaTeX; npm run dev serves, npm run build clean (plan S6 l.394, S6.3 l.402,409)",
+    "status": "PRESENT_UNTESTED",
+    "evidence": "ui/package.json:6-27 scripts dev=vite, build='tsc -p tsconfig.json && vite build', deps react 18.3/plotly.js-dist-min/katex/@tanstack/react-query + vite/ts/tailwind devDeps; node --version -> v24.22.0 exit 0 (also audit/evidence/versions-env.json); ui/node_modules/.bin/vite.cmd exists on disk and react/plotly/katex/vite package.json all present (Test-Path exit 0); ui/dist/index.html tracked references hashed /assets/index-*.js",
+    "gap": "Build/dev NOT run in this audit (would write ui/dist outside audit/; instructions allowed node --version + package.json only): current src compiling clean is unproven \u2014 the tracked dist proves a past build of some src state, not this one; no UI test exists"
+  },
+  {
+    "id": "P3-08",
+    "requirement": "Mission Control: group cards, session start/pause + budget/token/solver meters, champions strip, live red-team attack feed (spec l.250-251; plan S6.3 view 1)",
+    "status": "SKELETON",
+    "evidence": "ui/src/pages/MissionControl.tsx:7-17 useQuery(fetchSessionState) + StatusBadge event count/pace + generic EventFeed; ui/src/components/EventFeed.tsx:5-12 WebSocket text lines (last 50); ui/src/App.tsx:12-30 view switcher only \u2014 search of ui/src: no start/pause control, no budget/champion rendering (hits are comments/labels only)",
+    "gap": "No groups, members, candidate equations, budget meter, champions or attack-specific feed; the 'red team feed' is raw event JSON; nothing distinguishes attack events"
+  },
+  {
+    "id": "P3-09",
+    "requirement": "Generalization Matrix: candidates x flows (train/generated/locked greyed), error or pass/fail cells, click cell -> inspector, Elegance worst-case vs DL view (spec l.252; plan S6.3 view 2)",
+    "status": "SKELETON",
+    "evidence": "ui/src/pages/GeneralizationMatrix.tsx:6-16 useQuery(fetchMatrix); ui/src/components/MatrixHeatmap.tsx:8-16 real Plotly heatmap from backend cells; flowforge/api/server.py:64-96 matrix(): generated flows = generate_attacks() (12), cells only from scored session events, locked_greyed=True hardcoded; probe exit 0 matrix('default') -> candidates=[] cells=[] generated=12",
+    "gap": "With any real session absent the matrix is empty text; MatrixHeatmap ignores data.locked_greyed (locked flows plotted as null cells, not greyed), has no click handler, no pass/fail glyphs, no Elegance view; train/locked flow lists hardcoded in server.py:90-92, not read from configs/cases.yaml"
+  },
+  {
+    "id": "P3-10",
+    "requirement": "Candidate Inspector: KaTeX equation + lineage/mechanism/snapped constants, velocity profiles vs DNS/SST, error map + SAM overlay, barycentric map, gate-activity map, attack history (spec l.253; plan S6.3 view 3)",
+    "status": "SKELETON",
+    "evidence": "ui/src/pages/CandidateInspector.tsx:4-12 renders one hardcoded composer EquationView tex (gate formula, not a selected candidate) + prose claiming profiles/barycentric/attack history; ui/src/components/EquationView.tsx:1-8 real KaTeX renderToString; no fetch, no candidate selector, no Plotly/img/canvas in the page (13 lines)",
+    "gap": "Everything except KaTeX is a text claim: no profiles, barycentric, error-map image, gate map, lineage or attack history data path exists in API or UI"
+  },
+  {
+    "id": "P3-11",
+    "requirement": "Vault: locked milestone results + access log, max 3 evaluations (spec l.254; plan S6.3 view 4)",
+    "status": "SKELETON",
+    "evidence": "ui/src/pages/Vault.tsx:1-10 static text naming square_duct/nasa_wall_mounted_hump and the 3-evaluation rule; no fetch/WebSocket import; flowforge/api/server.py has no vault/access-log endpoint (routes: /health, /api/session/state, /api/matrix, /ws/events at server.py:43,48,64,99)",
+    "gap": "No milestone data, no access log, no enforcement counter; locked discipline exists only as prose (evaluator-side guard is Phase 1/2 scope, not wired here)"
+  },
+  {
+    "id": "P3-12",
+    "requirement": "Replay: scrub a recorded session timeline, zero-token demo reproduction (spec l.255; plan S6.3 view 5)",
+    "status": "SKELETON",
+    "evidence": "ui/src/pages/Replay.tsx:5-15 session-name input + EventFeed WebSocket re-stream; ui/src/App.tsx:18 header cites ws://localhost:8000/ws/events; search ui/src: no range/slider/scrub control (only comments saying 'scrub')",
+    "gap": "No timeline scrubber, seek, play/pause or event index; replay is a live re-stream from event 0 at server pace, so a demo cannot be scrubbed or cut deterministically"
+  },
+  {
+    "id": "P3-13",
+    "requirement": "Data flow: FastAPI WebSocket streams events (server-paced ~20/s), UI TanStack Query cache, UI computes no physics, one live-streamed session visible end to end (spec l.257; plan S6 acceptance)",
+    "status": "SKELETON",
+    "evidence": "flowforge/api/server.py:19,99-114 PACE_SECONDS=0.05, bare subscribe still sleeps 50ms/event + sends end marker; ui/src/api/client.ts:6-19 fetch session/matrix + eventsSocket; ui/src/main.tsx:7-13 QueryClientProvider; pages carry 'no physics in React' discipline (client.ts:1, CandidateInspector.tsx:9); probe exit 0: health ok, session_state('probe_s55')=5 tick events at 20/s claim, session_state('default') exists=False",
+    "gap": "Never observed in a browser or over a real socket in this audit (no dev/build run allowed); runs/ contains only probe_s55/events.jsonl (5 synthetic ticks, no candidate/attack events), so no live-streamed research session exists to display; ui/src/state/ is an empty .gitkeep CH-11 UPHELD + downgrade PRESENT_UNTESTED->SKELETON round-2: run_round writes no events.jsonl (fresh count 0), API reads runs/<session>/events.jsonl no production code creates, only runs/probe_s55 synthetic ticks exist - end-to-end live session cannot occur, so PRESENT_UNTESTED overstated the chain."
+  },
+  {
+    "id": "P3-14",
+    "requirement": "PHASE 3 GATE: red team breaks >=1 candidate and the attack is visible in the UI (spec l.326; plan l.394,458)",
+    "status": "MISSING",
+    "evidence": "library/attacks/ = .gitkeep only; probe exit 0 matrix('default') candidates=[] cells=[] and no session file contains candidate/flow/error events (runs/probe_s55/events.jsonl = 5x {type:tick}); flowforge/orchestrator/round.py:33-82 run_round never imports redteam/render/composer (RedTeam appears only in the l.3 docstring pipeline); record_attack/run_attack_suite/render_png have no production callers (caller search exit 0)",
+    "gap": "Gate outcome absent end to end: no candidate pool attacked, no break recorded, no attack cell/event for the UI to show; also blocked upstream (P3-16)"
+  },
+  {
+    "id": "P3-15",
+    "requirement": "S6 tail: harness regression sets in flowforge/agents/evals/ filled with positive/negative fixtures, library/curriculum/ examples linked (plan l.394)",
+    "status": "MISSING",
+    "evidence": "flowforge/agents/evals/__init__.py:1-6 self-described 'Scaffold only'; thresholds.py:1-12 four constants, no fixtures; library/curriculum/ = .gitkeep only (ls exit 0); no file links curriculum examples",
+    "gap": "No positive/negative fixture, no curriculum example; S6 deadline for this clause missed silently"
+  },
+  {
+    "id": "P3-16",
+    "requirement": "Dependencies on Phases 1-2: dataset + solver baseline, ladder survivors/champions, round loop emitting scored events for red team and UI (spec Phase 3 'don't start until previous gate passes' l.301)",
+    "status": "BLOCKED_BY_ENV",
+    "evidence": "audit/GATE.md:60-66 frozen-RANS-only: Docker exit 127 absent, data/raw only .gitkeep, flat placeholder mesh, pytest missing; audit/evidence/versions-env.json docker/uv exit 127, MODEL_API_KEY_set=false; flowforge/orchestrator/round.py mock path scores synthetic fields only (round.py:20-30, target=0.5*T1)",
+    "gap": "No real champion exists for the red team to break and no scored events exist for the UI; Phase 3 cannot pass its gate until Phase 1 solver/data (or an explicitly frozen-RANS substitute pool) lands"
+  }
+]
