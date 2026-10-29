@@ -48,7 +48,11 @@ def parse_residuals(log_text: str) -> dict[str, float]:
 
 
 def count_iterations(log_text: str) -> int:
-    return log_text.count("Time = ")
+    """Number of solver steps. Anchored: ExecutionTime/ClockTime lines
+    also contain 'Time = ' and must not be counted."""
+    import re
+
+    return len(re.findall(r"^Time = ", log_text, re.MULTILINE))
 
 
 def residuals_converged(residuals: dict[str, float], tol: float = RESIDUAL_TOL) -> bool:
@@ -75,6 +79,9 @@ class SolverRunResult:
     fields: dict[str, np.ndarray] = field(default_factory=dict)
     run_hash: str = ""
     error_message: str | None = None
+    # Solved stage dir (post-fork): latest-time fields, mesh and logs
+    # live here. None for cache hits whose stage was cleaned by hand.
+    stage_path: Path | None = None
 
 
 def compute_run_hash(case_name: str, mesh_hash: str, solver_settings: dict) -> str:
@@ -82,10 +89,24 @@ def compute_run_hash(case_name: str, mesh_hash: str, solver_settings: dict) -> s
     return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
 
+DEFAULT_IMAGE = "opencfd/openfoam-default:latest"
+
+
+def default_image() -> str:
+    """Image for solver runs. Override with FLOWFORGE_OPENFOAM_IMAGE.
+
+    Must match docker/openfoam.Dockerfile's OPENFOAM_TAG build; the
+    tag itself is pinned at build time (see the Dockerfile).
+    """
+    import os
+
+    return os.environ.get("FLOWFORGE_OPENFOAM_IMAGE", DEFAULT_IMAGE)
+
+
 class OpenFOAMSolverRunner:
-    def __init__(self, cache_dir: Path = Path("runs/cache"), image: str = "opencfd/openfoam-default:latest"):
+    def __init__(self, cache_dir: Path = Path("runs/cache"), image: str | None = None):
         self.cache_dir = cache_dir
-        self.image = image
+        self.image = image or default_image()
 
     def run(
         self,
@@ -94,23 +115,53 @@ class OpenFOAMSolverRunner:
         mesh_hash: str,
         solver_settings: dict,
         timeout_seconds: float = 300.0,
+        mesh: bool = True,
     ) -> SolverRunResult:
         assert timeout_seconds > 0, "solver timeout must be positive"
         assert timeout_seconds <= 300.0, "full runs are capped at 300s per plan"
+        # mesh=False skips the in-container blockMesh for pre-meshed cases
+        # (e.g. displaced hill meshes, which blockMesh would flatten).
         run_hash = compute_run_hash(case_name, mesh_hash, solver_settings)
         cache_file = self.cache_dir / f"{run_hash}.json"
         if cache_file.exists():
             data = json.loads(cache_file.read_text(encoding="utf-8"))
+            # A cache hit replays the verdict AND the fields: the solved
+            # stage dir is recorded in the cache entry, so callers never
+            # see a converged-but-fieldless result. A missing stage
+            # (cleaned by hand) yields {} rather than a crash.
+            fields: dict[str, np.ndarray] = {}
+            stage = data.get("stage")
+            stage_path = Path(stage) if stage and Path(stage).exists() else None
+            if data.get("converged") and stage_path is not None:
+                try:
+                    from flowforge.solver.field_io import read_fields
+
+                    fields = read_fields(stage_path)
+                except Exception:
+                    fields = {}
             return SolverRunResult(
                 case_path=case_path, converged=data["converged"],
                 iterations=data["iterations"], wall_time_seconds=0.0,
-                run_hash=run_hash, error_message=data.get("error_message"),
+                fields=fields, run_hash=run_hash,
+                error_message=data.get("error_message"),
+                stage_path=stage_path,
             )
+        # Isolated staging: a unique directory per run. Recycled paths
+        # risk stale bind-mount dentries on Windows (solver then reads
+        # ghost state and reports a plausible-but-wrong trajectory), so
+        # the run hash keys the result cache, never the stage path.
+        import shutil
+        import uuid
+
+        stage_dir = self.cache_dir / "cases" / f"{run_hash}-{uuid.uuid4().hex[:8]}"
+        shutil.copytree(case_path.resolve(), stage_dir)
         start = time.time()
+        solve_cmd = ("blockMesh && simpleFoam" if mesh
+                     else "test -d constant/polyMesh && simpleFoam")
         try:
             proc = subprocess.run(
-                ["docker", "run", "--rm", "-v", f"{case_path.resolve()}:/case",
-                 self.image, "bash", "-lc", "cd /case && blockMesh && simpleFoam"],
+                ["docker", "run", "--rm", "-v", f"{stage_dir.resolve()}:/case",
+                 self.image, "bash", "-lc", f"cd /case && {solve_cmd}"],
                 capture_output=True, text=True, timeout=timeout_seconds,
             )
             elapsed = time.time() - start
@@ -123,12 +174,16 @@ class OpenFOAMSolverRunner:
             if converged:
                 from flowforge.solver.field_io import read_fields
 
-                fields = read_fields(case_path)
+                fields = read_fields(stage_dir)
             result = SolverRunResult(
                 case_path=case_path, converged=converged,
                 iterations=count_iterations(proc.stdout),
                 wall_time_seconds=elapsed, fields=fields, run_hash=run_hash,
-                error_message=None if converged else (proc.stderr or proc.stdout)[-500:],
+                stage_path=stage_dir.resolve(),
+                error_message=None if converged else (
+                    "STDERR: " + (proc.stderr or "")[-1500:]
+                    + " STDOUT: " + (proc.stdout or "")[-1500:]
+                ),
             )
         except subprocess.TimeoutExpired:
             result = SolverRunResult(
@@ -146,7 +201,14 @@ class OpenFOAMSolverRunner:
         cache_file.write_text(json.dumps({
             "converged": result.converged, "iterations": result.iterations,
             "error_message": result.error_message,
+            "stage": str(stage_dir.resolve()),
         }), encoding="utf-8")
+        if not result.converged:
+            # proc is unbound when docker itself failed or timed out.
+            completed = locals().get("proc")
+            (self.cache_dir / f"{run_hash}.fail.log").write_text(
+                (completed.stdout if completed else "") or "",
+                encoding="utf-8", errors="replace")
         return result
 
     async def run_async(
@@ -157,6 +219,7 @@ class OpenFOAMSolverRunner:
         solver_settings: dict,
         timeout_seconds: float = FULL_TIMEOUT_SECONDS,
         mode: str | None = None,
+        mesh: bool = True,
     ) -> SolverRunResult:
         """Async-compatible entry point; the blocking Docker call runs in
         a worker thread so the event loop is never stalled. ``mode`` is
@@ -168,5 +231,5 @@ class OpenFOAMSolverRunner:
         )
         return await asyncio.to_thread(
             self.run, case_path, case_name, mesh_hash, solver_settings,
-            timeout_seconds,
+            timeout_seconds, mesh,
         )

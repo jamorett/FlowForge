@@ -56,25 +56,54 @@ def run_physics_checks(
         Aggregate pass/fail with per-check details.
     """
     budget = budget or Budget(max_tokens=0, max_solver_seconds=0, max_dollars=0)
+    # Optional DSL expression: enables real limit/rotation checks.
+    # Empty means legacy field-only mode (verdicts unchanged).
+    expression = getattr(task, "expression", "") or ""
     n = correction.shape[0]
     assert correction.shape == (n, 3, 3), f"correction must be (N,3,3), got {correction.shape}"
 
     results: dict[str, bool] = {}
     details: list[str] = []
 
-    # 1. Rotation invariance
+    # 1. Rotation invariance (frame indifference).
+    # With the candidate expression this is a real test: correct the
+    # original and the frame-rotated velocity gradient independently,
+    # then require a(Q-grad) == Q a(grad) Q^T. Without the expression
+    # only field finiteness can be checked (a rotated tensor is
+    # trivially self-consistent, so that path reports field-only).
     try:
         from scipy.spatial.transform import Rotation
-        R = Rotation.random(random_state=42).as_matrix()  # (3,3)
 
-        # Rotate the correction tensor: R @ a @ R^T
-        rotated = np.einsum("ij,njk,lk->nil", R, correction, R)
+        if expression:
+            from flowforge.dsl.evaluate import candidate_anisotropy
+            from flowforge.physics.tensors import (
+                invariants as _invs,
+                normalized_tensors as _norm,
+                tensor_basis as _basis,
+            )
 
-        # Check that rotated correction is consistent
-        diff = np.max(np.abs(rotated - np.einsum("ij,njk,lk->nil", R, correction, R)))
-        passed = diff < ROTATION_TOL
-        results["rotation_invariance"] = passed
-        details.append(f"rotation_invariance: {'PASS' if passed else 'FAIL'} (diff={diff:.2e})")
+            rng = np.random.default_rng(42)
+            grad = 0.1 * rng.standard_normal((8, 3, 3))
+            om = np.full(8, 2.0)
+            s, w = _norm(grad, om)
+            a = candidate_anisotropy(expression, _invs(s, w), _basis(s, w))
+            Q = Rotation.random(random_state=42).as_matrix()
+            grad_rot = np.einsum("ki,nij,lj->nkl", Q, grad, Q)
+            s2, w2 = _norm(grad_rot, om)
+            a_rot = candidate_anisotropy(expression, _invs(s2, w2), _basis(s2, w2))
+            expected = np.einsum("ki,nij,lj->nkl", Q, a, Q)
+            diff = float(np.max(np.abs(a_rot - expected)))
+            passed = bool(diff < ROTATION_TOL)
+            results["rotation_invariance"] = passed
+            details.append(
+                f"rotation_invariance: {'PASS' if passed else 'FAIL'} "
+                f"(diff={diff:.2e}, expression-aware)")
+        else:
+            finite = bool(np.all(np.isfinite(correction)))
+            results["rotation_invariance"] = finite
+            details.append(
+                f"rotation_invariance: {'PASS' if finite else 'FAIL'} "
+                "(field-only; expression unavailable)")
     except Exception as exc:
         results["rotation_invariance"] = False
         details.append(f"rotation_invariance: ERROR ({exc})")
@@ -107,27 +136,60 @@ def run_physics_checks(
         results["realizability"] = False
         details.append(f"realizability: ERROR ({exc})")
 
-    # 5. Zero-strain limit: correction should vanish when strain is zero
+    # 5. Zero-strain limit: correction should vanish when strain is zero.
+    # With the candidate expression, evaluate the scalar gain g at true
+    # zero strain: the tensor basis vanishes there, so the correction
+    # vanishes iff g(0) is finite. A singular g (inf/nan) is a real FAIL.
+    # Without the expression only field finiteness can be checked.
     try:
-        zero_correction = np.zeros((1, 3, 3))
-        zero_norm = np.linalg.norm(zero_correction)
-        passed = zero_norm < LIMIT_TOL
-        results["zero_strain_limit"] = True  # Zero input trivially passes
-        details.append("zero_strain_limit: PASS (zero input -> zero correction)")
+        if expression:
+            from flowforge.dsl.evaluate import compile_evaluator
+
+            g0 = compile_evaluator(expression)(
+                *(np.zeros(1) for _ in range(5)))
+            g0_val = float(np.asarray(g0).reshape(-1)[0])
+            passed = bool(np.isfinite(g0_val))
+            results["zero_strain_limit"] = passed
+            details.append(
+                f"zero_strain_limit: {'PASS' if passed else 'FAIL'} "
+                f"(g(0)={g0_val:.4g}, expression-aware)")
+        else:
+            finite = bool(np.all(np.isfinite(correction)))
+            results["zero_strain_limit"] = finite
+            logger.warning(
+                "zero_strain_limit: field-only mode (no expression); "
+                "verdict covers finiteness, not the true zero-strain limit")
+            details.append(
+                f"zero_strain_limit: {'PASS' if finite else 'FAIL'} "
+                "(field-only; expression unavailable)")
     except Exception as exc:
         results["zero_strain_limit"] = False
         details.append(f"zero_strain_limit: ERROR ({exc})")
 
     # 6. Log-layer limit: correction should stay small at equilibrium
+    # (I1 ~ 1, rest ~ 0), where SST is already right. Expression-aware
+    # when possible; otherwise the legacy field heuristic is kept and
+    # its measured norm is reported.
     try:
-        # At equilibrium (I1 ~ 1, I2 ~ 0), correction should be small
-        correction_norms = np.linalg.norm(correction.reshape(n, -1), axis=1)
-        mean_norm = np.mean(correction_norms)
-        # This is a soft check: we don't fail on large corrections,
-        # but we flag them.
-        passed = mean_norm < 10.0  # Very generous upper bound
-        results["log_layer_limit"] = passed
-        details.append(f"log_layer_limit: {'PASS' if passed else 'FAIL'} (mean_norm={mean_norm:.4f})")
+        if expression:
+            from flowforge.dsl.evaluate import compile_evaluator
+
+            g_ref = compile_evaluator(expression)(
+                np.ones(1), *(np.zeros(1) for _ in range(4)))
+            g_ref_val = float(np.asarray(g_ref).reshape(-1)[0])
+            passed = bool(np.isfinite(g_ref_val))
+            results["log_layer_limit"] = passed
+            details.append(
+                f"log_layer_limit: {'PASS' if passed else 'FAIL'} "
+                f"(g(I1=1)={g_ref_val:.4g}, expression-aware)")
+        else:
+            correction_norms = np.linalg.norm(correction.reshape(n, -1), axis=1)
+            mean_norm = float(np.mean(correction_norms))
+            passed = mean_norm < 10.0  # Legacy heuristic bound, field-only
+            results["log_layer_limit"] = passed
+            details.append(
+                f"log_layer_limit: {'PASS' if passed else 'FAIL'} "
+                f"(mean_norm={mean_norm:.4f}, field-only)")
     except Exception as exc:
         results["log_layer_limit"] = False
         details.append(f"log_layer_limit: ERROR ({exc})")

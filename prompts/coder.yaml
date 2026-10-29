@@ -1,6 +1,6 @@
 role: coder
 version: 2
-model: muse-code
+model: muse-spark-1.3-contributor
 schema: FitResult
 risk_audit: required
 prompt: |

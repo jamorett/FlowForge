@@ -9,6 +9,10 @@ class PhysicsTask:
 
     candidate_hash: str
     case_id: str
+    # DSL expression for the candidate, when known. Enables real limit
+    # checks (zero-strain singularity, log-layer reference) instead of
+    # field-only heuristics. Empty means field-only mode.
+    expression: str = ""
 
 
 # Checks, in order: rotation invariance, symmetry, trace-free,

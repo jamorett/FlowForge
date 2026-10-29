@@ -1,5 +1,5 @@
 role: composer
-version: 2
+version: 3
 model: muse-spark-1.3
 schema: CompositionPlan
 risk_audit: required
@@ -24,4 +24,8 @@ prompt: |
 
   Rules:
   - Include a risk_audit field.
-  - Output JSON matching the CompositionPlan schema ONLY.
+  - Output JSON matching the CompositionPlan schema ONLY, with EXACTLY
+    these top-level keys: "modules" (non-empty list of expression
+    strings, e.g. ["-0.04 * tanh(I1) * I2"]), "gates" (list of gate
+    dicts; use [] when no gate earns its cost), "risk_audit" (string).
+    A response with only risk_audit is invalid.

@@ -10,10 +10,20 @@
   with baseline SST (correct() returns after the base call, nut untouched).
   Mode B (compiled): code generated per candidate is inserted at the
   GENERATED_MODE_B marker in correctedKOmegaSST.C and compiled in.
+
+  Template over the turbulence-model family like every official RAS
+  model; concrete registration for incompressible flow happens at the
+  bottom of correctedKOmegaSST.C via makeRASModel.
 \*---------------------------------------------------------------------------*/
 #ifndef correctedKOmegaSST_H
 #define correctedKOmegaSST_H
 
+#include "dimensionedScalar.H"
+#include "volFields.H"
+#include "turbulenceModel.H"
+#include "fvMatrices.H"
+#include "fvc.H"
+#include "fvm.H"
 #include "kOmegaSST.H"
 
 namespace Foam
@@ -21,11 +31,40 @@ namespace Foam
 namespace RASModels
 {
 
+/*---------------------------------------------------------------------------*\
+                      Class correctedKOmegaSST Declaration
+\*---------------------------------------------------------------------------*/
+
+template<class BasicTurbulenceModel>
 class correctedKOmegaSST
 :
     public kOmegaSST<BasicTurbulenceModel>
 {
+public:
+
+    typedef typename BasicTurbulenceModel::alphaField alphaField;
+    typedef typename BasicTurbulenceModel::rhoField rhoField;
+    typedef typename BasicTurbulenceModel::transportModel transportModel;
+
+
+    //- Runtime type information
+    TypeName("correctedKOmegaSST");
+
+
 protected:
+
+    //- Fixed-field corrections (Mode A). Nobody else constructs these
+    //  fields, so the registry never holds them: they must be read here
+    //  at start time and kept frozen for the run (oracle semantics).
+    autoPtr<volSymmTensorField> aDelta_;
+    autoPtr<volScalarField> PkDelta_;
+
+    //- Explicit Reynolds-stress correction (SpaRTA form): 2k*aDelta,
+    //  rebuilt from the current k every correct() and injected through
+    //  divDevTau. The nut path alone is a scalar surrogate that cannot
+    //  carry the tensorial redistribution (measured: 5e-5 response on a
+    //  0.5-magnitude correction); this term is the real correction.
+    autoPtr<volSymmTensorField> tauDelta_;
 
     //- Pk with limiter + correction, clamped >= 0. Denominator-free.
     scalar correctedProduction
@@ -50,9 +89,8 @@ protected:
         return scalar(0);
     }
 
-public:
 
-    TypeName("correctedKOmegaSST");
+public:
 
     correctedKOmegaSST
     (
@@ -69,7 +107,14 @@ public:
     virtual ~correctedKOmegaSST() = default;
 
     virtual void correct();
+
+    //- Momentum stress with the explicit correction subtracted:
+    //  divDevReff_base - div(2k*aDelta) (SpaRTA: tau = tau_SST + 2k*aDelta).
+    //  divDevReff is the v2512 incompressible entry point simpleFoam
+    //  assembles the momentum equation with.
+    virtual tmp<fvVectorMatrix> divDevReff(volVectorField& U) const;
 };
+
 
 } // End namespace RASModels
 } // End namespace Foam

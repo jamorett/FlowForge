@@ -35,7 +35,7 @@ class TestPromptLoader:
     def test_model_for_role(self):
         from flowforge.agents.prompt_loader import model_for_role
         assert model_for_role("board") == "muse-spark-1.3"
-        assert model_for_role("coder") == "muse-code"
+        assert model_for_role("coder") == "muse-spark-1.3-contributor"
 
     def test_schema_name_for_role(self):
         from flowforge.agents.prompt_loader import schema_name_for_role

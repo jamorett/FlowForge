@@ -1,12 +1,13 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { fetchSessionState } from "../api/client";
+import { fetchSessionState, startRound } from "../api/client";
 import { EventFeed } from "../components/EventFeed";
 import { StatusBadge } from "../components/StatusBadge";
 
 const ROLES = [
   { name: "Board", model: "muse-spark-1.3", role: "Directs round planning, group staffing & budgets", status: "active" },
   { name: "Theorist", model: "muse-spark-1.3", role: "Proposes closure tensor expressions (complexity <= 25)", status: "active" },
-  { name: "Coder", model: "muse-code", role: "Fits constants via elastic net & snaps within 1%", status: "active" },
+  { name: "Coder", model: "muse-spark-1.3-contributor", role: "Fits constants via elastic net & snaps within 1%", status: "active" },
   { name: "Analyst", model: "muse-spark-1.3", role: "Diagnoses regional error maps & recirculation zones", status: "idle" },
   { name: "Skeptic", model: "muse-spark-1.3", role: "Attacks correctness & elegance from separate context", status: "idle" },
   { name: "Red Team", model: "muse-spark-1.3", role: "Deforms flow geometries to break champions", status: "active" },
@@ -15,9 +16,57 @@ const ROLES = [
 
 export function MissionControl() {
   const q = useQuery({ queryKey: ["session"], queryFn: () => fetchSessionState() });
+  const [session, setSession] = useState("round-1");
+  const [live, setLive] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  async function onStart() {
+    setStarting(true);
+    setNotice(null);
+    try {
+      const res = await startRound(session || "default", !live);
+      if (res.status === "started") {
+        setNotice(`Round started in session “${res.session}” (${res.mock ? "mock, no spend" : "LIVE, spends API credits"}). Watch the stream below.`);
+      } else if (res.status === "already_running") {
+        setNotice(`Session “${res.session}” already has a running round.`);
+      } else {
+        setNotice(`Start rejected: ${res.reason ?? res.status}.`);
+      }
+    } catch (e) {
+      setNotice(`API offline — start the FastAPI server first. (${e instanceof Error ? e.message : e})`);
+    } finally {
+      setStarting(false);
+    }
+  }
 
   return (
     <section aria-label="Mission control" className="space-y-6">
+      {/* Session control */}
+      <div className="glass-panel p-4 rounded-xl border border-white/10 flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2 text-xs">
+          <span className="text-neutral-400">Session:</span>
+          <input
+            type="text"
+            value={session}
+            onChange={(e) => setSession(e.target.value)}
+            className="bg-neutral-900/60 text-cyan-300 font-mono text-xs px-2 py-1.5 rounded-lg border border-white/10 focus:outline-none w-32"
+          />
+        </div>
+        <label className="flex items-center gap-2 text-xs text-neutral-300 cursor-pointer">
+          <input type="checkbox" checked={live} onChange={(e) => setLive(e.target.checked)} className="accent-cyan-500" />
+          Live (real API, spends credits)
+        </label>
+        <button
+          onClick={onStart}
+          disabled={starting}
+          className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-cyan-600 to-blue-600 text-white border border-cyan-400/40 disabled:opacity-50"
+        >
+          {starting ? "Starting…" : live ? "Start live round" : "Start mock round"}
+        </button>
+        {notice && <p className="text-[11px] text-neutral-400 w-full">{notice}</p>}
+      </div>
+
       {/* Header Metrics Banner */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="glass-panel p-4 rounded-xl border border-white/10">

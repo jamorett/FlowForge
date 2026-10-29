@@ -124,7 +124,25 @@ def matrix(session: str = "default") -> dict:
         for s in generate_attacks()
     ]
     events = _read_events(session)
+    # Candidates: scored cells first, then step-level proposals (theorist /
+    # rung survivors / champion). Cells stay empty until scored
+    # candidate x flow events exist; they are never invented here.
     candidates = sorted({str(e["candidate"]) for e in events if e.get("candidate")})
+    for e in events:
+        for key in ("candidates", "expressions"):
+            vals = e.get(key)
+            if isinstance(vals, list):
+                candidates.extend(str(v) for v in vals if isinstance(v, (str, int, float)))
+        for key in ("survivors", "final"):
+            vals = e.get(key)
+            if isinstance(vals, list):
+                for s in vals:
+                    if isinstance(s, dict) and s.get("expression"):
+                        candidates.append(str(s["expression"]))
+        champ = e.get("champion")
+        if isinstance(champ, dict) and champ.get("expression"):
+            candidates.append(str(champ["expression"]))
+    candidates = sorted(set(candidates))
     cells = [
         {"candidate": str(e["candidate"]), "flow": str(e.get("flow", "")),
          "error": e.get("error"), "split": e.get("split", "generated")}
@@ -141,6 +159,93 @@ def matrix(session: str = "default") -> dict:
         "locked_greyed": True,
         "cells": cells,
     }
+
+
+@app.post("/api/rounds/start")
+def start_round(session: str = "default", mock: bool = True,
+                round_no: int = 1) -> dict:
+    """Start a research round in the background (mock by default: no spend).
+
+    The round appends to ``runs/<session>/events.jsonl``, which the UI
+    already streams live. A second start for a running session is refused.
+    Cancellation is not implemented: a started round runs to completion.
+    """
+    import threading
+
+    from flowforge.orchestrator.round import run_round
+
+    if not _SAFE_SESSION.match(session):
+        return {"status": "rejected", "reason": "invalid session id"}
+    existing = _round_threads.get(session)
+    if existing is not None and existing.is_alive():
+        return {"status": "already_running", "session": session}
+
+    def _run() -> None:
+        try:
+            run_round(round_no, mock=mock, session=session)
+        except Exception as exc:  # never take the thread down silently
+            logger = __import__("logging").getLogger(__name__)
+            logger.error("background round failed: %s", exc)
+
+    thread = threading.Thread(target=_run, daemon=True,
+                              name=f"round-{session}")
+    _round_threads[session] = thread
+    thread.start()
+    return {"status": "started", "session": session, "mock": mock,
+            "events": str(_events_path(session))}
+
+
+_round_threads: dict = {}
+
+
+@app.get("/api/regions")
+def regions(image: str = "", use_api: bool = False) -> dict:
+    """Segment one error-map PNG. Offline by default (no API spend).
+
+    Set ``use_api=true`` only with ``MODEL_API_KEY`` configured; the
+    response always reports which source produced the regions.
+    """
+    from flowforge.render.sam_client import segment_error_regions
+
+    if not image:
+        return {"image": image, "source": "none", "model": None,
+                "regions": [], "detail": "no image given"}
+    try:
+        return segment_error_regions(image, use_api=use_api)
+    except Exception as exc:
+        return {"image": image, "source": "none", "model": None,
+                "regions": [], "detail": f"segmentation failed: {exc}"}
+
+
+@app.get("/api/latest_regions")
+def latest_regions(session: str = "default", use_api: bool = False) -> dict:
+    """Segment the newest rendered error map in ``runs/<session>``.
+
+    Returns empty regions (never invented) when nothing was rendered yet.
+    """
+    from flowforge.render.sam_client import segment_error_regions
+
+    root = Path("runs") / session
+    newest: Path | None = None
+    newest_mtime = -1.0
+    if root.exists():
+        for png in root.rglob("*.png"):
+            if not png.with_suffix(".npy").exists():
+                continue
+            try:
+                mtime = png.stat().st_mtime
+            except OSError:
+                continue
+            if mtime > newest_mtime:
+                newest, newest_mtime = png, mtime
+    if newest is None:
+        return {"image": None, "source": "none", "model": None,
+                "regions": [], "detail": "no rendered error map yet"}
+    try:
+        return segment_error_regions(str(newest), use_api=use_api)
+    except Exception as exc:
+        return {"image": str(newest), "source": "none", "model": None,
+                "regions": [], "detail": f"segmentation failed: {exc}"}
 
 
 @app.websocket("/ws/events")

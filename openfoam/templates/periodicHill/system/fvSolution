@@ -7,8 +7,8 @@ FoamFile
 }
 solvers
 {
-    p { solver GAMG; tolerance 1e-6; relTol 0.01; }
-    U { solver smoothSolver; smoother symGaussSeidel; tolerance 1e-6; relTol 0.01; }
+    p { solver GAMG; smoother GaussSeidel; tolerance 1e-6; relTol 0.001; }
+    U { solver smoothSolver; smoother symGaussSeidel; tolerance 1e-6; relTol 0.001; }
     k { solver smoothSolver; smoother symGaussSeidel; tolerance 1e-6; relTol 0.01; }
     omega { solver smoothSolver; smoother symGaussSeidel; tolerance 1e-6; relTol 0.01; }
 }
@@ -16,10 +16,12 @@ SIMPLE
 {
     nNonOrthogonalCorrectors 0;
     consistent yes;
+    pRefCell 0;
+    pRefValue 0;
     residualControl { p 1e-4; U 1e-4; k 1e-4; omega 1e-4; }
 }
 relaxationFactors
 {
-    fields { p 0.3; }
-    equations { U 0.7; k 0.7; omega 0.7; }
+    fields { p 0.2; }
+    equations { U 0.5; k 0.7; omega 0.7; }
 }

@@ -12,6 +12,5 @@ boundaryField
     walls { type noSlip; }
     cyclicX1 { type cyclic; }
     cyclicX2 { type cyclic; }
-    cyclicZ1 { type cyclic; }
-    cyclicZ2 { type cyclic; }
+    frontAndBack { type empty; }
 }

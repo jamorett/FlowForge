@@ -1,5 +1,5 @@
 role: theorist
-version: 2
+version: 3
 model: muse-spark-1.3
 schema: CandidateProposal
 risk_audit: required
@@ -12,7 +12,10 @@ prompt: |
     I3 (strain-rotation coupling), I4, I5.
   - Operations: +, -, *, / (by strictly positive expressions only),
     integer powers, sqrt (of strictly positive expressions), exp, tanh.
-  - Constants to be fitted by the Coder (use symbolic placeholders).
+  - Numeric coefficients, e.g. -0.05 * tanh(I1) * I2 + 0.02 * I3.
+    The Coder refits and snaps them. NEVER invent symbols such as
+    C1, C2, a, b: any name besides I1..I5, exp, tanh, sqrt, div is
+    rejected before scoring.
 
   Rules:
   - Complexity must be <= 25 expression-tree nodes.

@@ -21,7 +21,8 @@ BASE_URL = "https://api.meta.ai/v1"
 # USD per 1K tokens (input+output blended). Update from Meta pricing at
 # kickoff; the meter must never run on an invented rate silently, so an
 # unknown model falls back to the most expensive known rate.
-RATE_PER_1K = {"muse-spark-1.3": 0.002, "muse-code": 0.003, "wonder": 0.002}
+RATE_PER_1K = {"muse-spark-1.3": 0.002, "muse-spark-1.3-contributor": 0.003,
+                 "muse-wonder-1.0": 0.002}
 FALLBACK_RATE_PER_1K = max(RATE_PER_1K.values())
 
 T = TypeVar("T", bound=BaseModel)

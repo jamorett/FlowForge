@@ -6,6 +6,7 @@ runs/*
 !**/.gitkeep
 __pycache__/
 .venv/
+.env
 *.pyc
 pip-build-tracker-*/
 pip-ephem-wheel-cache-*/

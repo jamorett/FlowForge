@@ -87,6 +87,63 @@ def _make_logger(session_dir: Path):
         return _AppendOnlyWriter(session_dir)
 
 
+def _analyst_regions(expressions: list[str], session_dir: Path,
+                     round_no: int = 1) -> list[dict]:
+    """Render error maps + segment regions for finalists.
+
+    Returns evidence dicts folded into the analyst step event, so the
+    12-step chain keeps its exact shape. Tries the real case via the
+    analyst tools; without ingested data it falls back to an explicitly
+    labeled illustrative synthetic slice (never measured evidence).
+    Failures yield [] and never break the round.
+    """
+    from flowforge.render.sam_client import segment_error_regions
+
+    out: list[dict] = []
+    for i, expr in enumerate(list(expressions)[:2]):
+        if not expr:
+            continue
+        image: str | None = None
+        illustrative = False
+        try:
+            from flowforge.agents.tools.registry import TOOLS
+
+            image = TOOLS["render_error_map"](
+                expr, case_id="periodic_hill_re5600",
+                out_png=str(Path(session_dir) / f"err_r{round_no}_{i}.png"))
+        except Exception as exc:
+            logger.warning("analyst render (real case) failed: %s", exc)
+            image = None
+        if image is None:
+            try:
+                import numpy as np
+
+                from flowforge.dsl.evaluate import candidate_anisotropy
+                from flowforge.render.error_map import render_png
+
+                inv, basis, target = synthetic_fields(n=64)
+                pred = candidate_anisotropy(expr, inv, basis)
+                err = np.linalg.norm(
+                    (pred - target).reshape(64, -1), axis=1)
+                side = 8
+                out_png = Path(session_dir) / f"err_synth_{i}.png"
+                render_png(err.reshape(side, side), out_png)
+                image = str(out_png)
+                illustrative = True
+            except Exception as exc:
+                logger.warning("analyst render (synthetic) failed: %s", exc)
+                continue
+        try:
+            seg = segment_error_regions(image, use_api=False)
+        except Exception as exc:
+            logger.warning("analyst segment failed: %s", exc)
+            continue
+        out.append({"candidate": expr, "image": image,
+                    "illustrative": illustrative,
+                    "source": seg["source"], "regions": seg["regions"]})
+    return out
+
+
 def _prompt_hash_for(text: str) -> str:
     try:
         from flowforge.agents.runtime.event_logger import prompt_hash
@@ -131,11 +188,16 @@ def _build_library_context() -> dict:
 
 def _run_round_live(round_no: int, candidates: tuple[str, ...],
                     session_name: str, resolved_dir: Path,
-                    event_logger, events_path: Path) -> dict:
+                    event_logger, events_path: Path,
+                    groups: int = 1, group_ids: list | None = None,
+                    mechanisms: list | None = None) -> dict:
     """Execute a live round with actual LLM calls via the dispatcher.
 
     Each role is dispatched through the prompt loader -> ModelRuntime
-    pipeline with structured output validation.
+    pipeline with structured output validation. With groups > 1, one
+    theorist is dispatched per group (each with its mechanism brief);
+    rungs score the merged pool and the remaining roles merge across
+    groups.
     """
     from flowforge.agents.dispatcher import dispatch_role, RoleDispatchError
     from flowforge.agents.runtime.client import ModelRuntime, BudgetExceededError
@@ -173,29 +235,38 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
         **board_data,
     })
 
-    # --- Step 2: Theorist ---
-    theorist_context = {
-        "mechanisms": board_data.get("mechanisms", []),
-        "closure_cards": lib_context.get("modules", []),
-        "group_history": lib_context.get("findings", []),
-    }
-    try:
-        theorist_result = dispatch_role("theorist", runtime, theorist_context)
-        proposed = theorist_result.model_dump()
-        expressions = proposed.get("expressions", list(candidates))
-    except (RoleDispatchError, BudgetExceededError) as exc:
-        logger.warning("Theorist dispatch failed: %s; using default candidates", exc)
-        expressions = list(candidates)
-        proposed = {"expressions": expressions, "mechanisms": ["fallback"],
-                     "risk_audit": f"Theorist fallback: {exc}"}
-
-    event_logger.log({
-        "type": "theorist", "step": "theorist", "role": "theorist",
-        "round": round_no, "mock": False, "synthetic": False,
-        "source": "live", "mode": "live", "session": session_name,
-        "prompt_hash": _prompt_hash_for(f"flowforge:round:{round_no}:step:theorist"),
-        **proposed,
-    })
+    # --- Step 2: Theorist(s), one per group ---
+    group_ids = group_ids or ["g0"]
+    mechanisms = mechanisms or [""]
+    group_exprs: dict[str, list[str]] = {}
+    for gid, mech in zip(group_ids, mechanisms):
+        theorist_context = {
+            "mechanisms": ([mech] if mech else [])
+            + list(board_data.get("mechanisms", [])),
+            "closure_cards": lib_context.get("modules", []),
+            "group_history": lib_context.get("findings", []),
+        }
+        try:
+            theorist_result = dispatch_role("theorist", runtime, theorist_context)
+            proposed = theorist_result.model_dump()
+            gexprs = proposed.get("expressions", list(candidates))
+        except (RoleDispatchError, BudgetExceededError) as exc:
+            logger.warning("Theorist dispatch failed for %s: %s; using defaults", gid, exc)
+            gexprs = list(candidates)
+            proposed = {"expressions": gexprs, "mechanisms": ["fallback"],
+                         "risk_audit": f"Theorist fallback: {exc}"}
+        group_exprs[gid] = list(gexprs)
+        event_logger.log({
+            "type": "theorist", "step": "theorist", "role": "theorist",
+            "round": round_no, "group": gid, "mechanism": mech,
+            "mock": False, "synthetic": False,
+            "source": "live", "mode": "live", "session": session_name,
+            "prompt_hash": _prompt_hash_for(
+                f"flowforge:round:{round_no}:step:theorist"
+                + (f":{gid}" if len(group_ids) > 1 else "")),
+            **proposed,
+        })
+    expressions = [e for gid in group_ids for e in group_exprs[gid]]
 
     # --- Step 3: Coder (fit constants) ---
     coder_context = {"candidates": expressions}
@@ -255,9 +326,11 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
         "round": round_no, "mock": False, "synthetic": False,
         "source": "live", "mode": "live", "session": session_name,
         "prompt_hash": _prompt_hash_for(f"flowforge:round:{round_no}:step:analyst"),
+        "regions": _analyst_regions(
+            [s.get("expression", "") for s in (final or [])],
+            resolved_dir, round_no),
         **analyst_data,
     })
-
     # --- Step 9: Skeptic ---
     skeptic_context = {
         "candidates": [s.get("expression") for s in final],
@@ -351,6 +424,10 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
         "round": round_no,
         "mock": False,
         "proposed": len(expressions),
+        "groups": groups,
+        "staffing": [{"group": gid, "mechanism": mech,
+                      "candidates": group_exprs[gid]}
+                     for gid, mech in zip(group_ids, mechanisms)],
         "survivors_rung1": survivors,
         "survivors_rung2": ladder["rung2"],
         "final_rung3": final,
@@ -359,17 +436,32 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
         "session": session_name,
         "session_dir": str(resolved_dir),
         "events_path": str(events_path),
-        "event_count": len(ROUND_STEPS),
+        "event_count": len(ROUND_STEPS) + max(0, len(group_ids) - 1),
         "steps": list(ROUND_STEPS),
         "tokens_used": runtime.tokens,
         "dollars_spent": round(runtime.spent, 4),
     }
 
 
+GROUP_MECHANISMS = (
+    "streamline_curvature",
+    "pressure_gradient_sensitization",
+    "secondary_flow_anisotropy",
+    "non_equilibrium_lag",
+)
+
+
 def run_round(round_no: int, mock: bool = False,
               candidates: tuple[str, ...] = MOCK_CANDIDATES,
               session_dir=None, session: str | None = None,
-              runs_root=None, **kwargs) -> dict:
+              runs_root=None, groups: int = 1, **kwargs) -> dict:
+    """Run one round. ``groups`` staffs parallel research groups (default 1).
+
+    With one group the event chain is exactly the 12 classic steps.
+    With N groups, theorist/coder/rung/analyst steps repeat per group
+    (tagged ``group: g<i>`` with a mechanism brief) and skeptic/redteam/
+    composer/champion merge across groups. ``groups`` must be >= 1.
+    """
     # Tolerated aliases from callers that name the session differently.
     if session_dir is None:
         session_dir = kwargs.pop("output_dir", kwargs.pop("session_path", None))
@@ -378,6 +470,10 @@ def run_round(round_no: int, mock: bool = False,
     if kwargs:
         raise TypeError(f"run_round got unexpected arguments: {sorted(kwargs)}")
 
+    if not isinstance(groups, int) or groups < 1:
+        raise ValueError(f"groups must be a positive int, got {groups!r}")
+    group_ids = [f"g{i}" for i in range(groups)]
+    mechanisms = [GROUP_MECHANISMS[i % len(GROUP_MECHANISMS)] for i in range(groups)]
     # Resolve the event log FIRST: the chain must be observable even when
     # the DSL stack (sympy) is unavailable in this environment.
     resolved_dir, session_name = _resolve_session_dir(round_no, session_dir, session, runs_root)
@@ -419,6 +515,7 @@ def run_round(round_no: int, mock: bool = False,
             return _run_round_live(
                 round_no, candidates, session_name,
                 resolved_dir, event_logger, events_path,
+                groups=groups, group_ids=group_ids, mechanisms=mechanisms,
             )
         except Exception as exc:
             logger.error("Live round failed: %s; falling back to mock", exc)
@@ -435,9 +532,31 @@ def run_round(round_no: int, mock: bool = False,
         sub_basis = {name: arr[:k] for name, arr in basis.items()}
         return apriori_mse(candidate_anisotropy(expr, sub_inv, sub_basis), target[:k])
 
-    ladder = run_ladder(list(candidates), inv, basis, target, short_eval=short_eval)
-    survivors = ladder["rung1"]
-    final = ladder["rung3"]
+    def _clean(value):
+        return json.loads(json.dumps(value, default=float))
+
+    # Staffing: split candidates round-robin across groups (group 0 keeps
+    # the full list when groups == 1, preserving the classic chain).
+    grouped: list[tuple[str, str, list[str]]] = []
+    for i, gid in enumerate(group_ids):
+        if groups == 1:
+            gcands = list(candidates)
+        else:
+            gcands = [c for j, c in enumerate(candidates) if j % groups == i]
+        grouped.append((gid, mechanisms[i], gcands))
+
+    group_ladders: dict[str, dict] = {}
+    merged_final: list[dict] = []
+    for gid, _mech, gcands in grouped:
+        if gcands:
+            gl = run_ladder(gcands, inv, basis, target, short_eval=short_eval)
+        else:
+            gl = {"rung1": [], "rung2": [], "rung3": []}
+        group_ladders[gid] = gl
+        for s in gl["rung3"]:
+            merged_final.append({**s, "group": gid})
+
+    final = merged_final
     champion_pool = final if final else []
     champion = None
     if champion_pool:
@@ -452,42 +571,33 @@ def run_round(round_no: int, mock: bool = False,
         champion = {"expression": best["id"], "dl": best["dl"],
                     "worst_error": best["worst_error"]}
 
+    staffing = [{"group": gid, "mechanism": mech,
+                 "candidates": list(gc)} for gid, mech, gc in grouped]
     result: dict = {
         "round": round_no,
         "mock": mock,
         "proposed": len(candidates),
-        "survivors_rung1": survivors,
-        "survivors_rung2": ladder["rung2"],
+        "groups": groups,
+        "staffing": staffing,
+        "survivors_rung1": [s for gid, _, _ in grouped
+                             for s in group_ladders[gid]["rung1"]],
+        "survivors_rung2": [s for gid, _, _ in grouped
+                             for s in group_ladders[gid]["rung2"]],
         "final_rung3": final,
         "champion": champion,
         "status": "ok" if final else "all_rejected",
     }
 
-    def _clean(value):
-        return json.loads(json.dumps(value, default=float))
-
-    step_details: dict[str, dict] = {
-        "board": {"candidates": list(candidates), "proposed": len(candidates)},
-        "theorist": {"candidates": list(candidates), "expressions": list(candidates)},
-        "coder": {"candidates": list(candidates)},
-        "rung0": {"passed": list(ladder.get("rung0_passed", [])), "candidates": list(candidates)},
-        "rung1": {"survivors": _clean(survivors)},
-        "rung2": {"survivors": _clean(ladder["rung2"])},
-        "rung3": {"survivors": _clean(final), "final": _clean(final)},
-        "analyst": {"final_count": len(final), "candidates": [s.get("expression") for s in final]},
-        "skeptic": {"final_count": len(final), "candidates": [s.get("expression") for s in final]},
-        "redteam": {"flows": [], "final_count": len(final)},
-        "composer": {"champion": champion, "final_count": len(final)},
-        "champion": {"champion": champion, "status": result["status"]},
-    }
-
-    for step in ROUND_STEPS:
-        prompt_label = f"flowforge:round:{round_no}:step:{step}"
+    def _step_event(step: str, role: str, group: str, mechanism: str | None,
+                    details: dict) -> None:
+        prompt_label = (f"flowforge:round:{round_no}:step:{step}"
+                        + (f":{group}" if groups > 1 else ""))
         event = {
             "type": step,
             "step": step,
-            "role": step,
+            "role": role,
             "round": round_no,
+            "group": group,
             "mock": bool(mock),
             # Fields are synthetic in this path (see synthetic_fields);
             # label them as such, in mock mode and otherwise.
@@ -496,14 +606,49 @@ def run_round(round_no: int, mock: bool = False,
             "mode": "mock" if mock else "synthetic",
             "session": session_name,
             "prompt_hash": _prompt_hash_for(prompt_label),
-            **step_details[step],
+            **details,
         }
+        if mechanism is not None:
+            event["mechanism"] = mechanism
         event_logger.log(event)
+
+    _step_event("board", "board", "all", None,
+                {"candidates": list(candidates), "proposed": len(candidates),
+                 "groups": groups, "staffing": staffing})
+    for gid, mech, gcands in grouped:
+        gl = group_ladders[gid]
+        gfinal = [s for s in final if s.get("group") == gid]
+        _step_event("theorist", "theorist", gid, mech,
+                    {"candidates": list(gcands), "expressions": list(gcands)})
+        _step_event("coder", "coder", gid, mech, {"candidates": list(gcands)})
+        _step_event("rung0", "rung0", gid, mech,
+                    {"passed": list(gl.get("rung0_passed", [])),
+                     "candidates": list(gcands)})
+        _step_event("rung1", "rung1", gid, mech, {"survivors": _clean(gl["rung1"])})
+        _step_event("rung2", "rung2", gid, mech, {"survivors": _clean(gl["rung2"])})
+        _step_event("rung3", "rung3", gid, mech,
+                    {"survivors": _clean(gl["rung3"]),
+                     "final": _clean([s for s in gl["rung3"]])})
+        _step_event("analyst", "analyst", gid, mech,
+                    {"final_count": len(gfinal),
+                     "candidates": [s.get("expression") for s in gfinal],
+                     "regions": _analyst_regions(
+                         [s.get("expression", "") for s in gfinal],
+                         resolved_dir, round_no)})
+    _step_event("skeptic", "skeptic", "all", None,
+                {"final_count": len(final),
+                 "candidates": [s.get("expression") for s in final]})
+    _step_event("redteam", "redteam", "all", None,
+                {"flows": [], "final_count": len(final)})
+    _step_event("composer", "composer", "all", None,
+                {"champion": champion, "final_count": len(final)})
+    _step_event("champion", "champion", "all", None,
+                {"champion": champion, "status": result["status"]})
 
     result["session"] = session_name
     result["session_dir"] = str(resolved_dir)
     result["events_path"] = str(events_path)
-    result["event_count"] = len(ROUND_STEPS)
+    result["event_count"] = 1 + 7 * groups + 4
     result["steps"] = list(ROUND_STEPS)
     return result
 
@@ -514,9 +659,11 @@ def main() -> None:
     parser.add_argument("--round", type=int, default=1)
     parser.add_argument("--session", default=None)
     parser.add_argument("--session-dir", default=None)
+    parser.add_argument("--groups", type=int, default=1)
     args = parser.parse_args()
     print(run_round(args.round, mock=args.mock_llm,
-                    session=args.session, session_dir=args.session_dir))
+                    session=args.session, session_dir=args.session_dir,
+                    groups=args.groups))
 
 
 if __name__ == "__main__":

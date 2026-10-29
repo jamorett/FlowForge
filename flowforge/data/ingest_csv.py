@@ -105,11 +105,16 @@ def extract_case_arrays(df_k: pd.DataFrame, df_r: pd.DataFrame) -> dict[str, np.
     strain = 0.5 * (grad_u + np.swapaxes(grad_u, -1, -2))
     pk_delta = production_target(a_delta, k, strain)
 
+    # DNS velocity (REF) for oracle / rung-2-3 error-vs-DNS metrics.
+    # Missing in older stores; absent columns raise KeyError loudly.
+    u_dns = df_r[["REF_U_1", "REF_U_2", "REF_U_3"]].to_numpy(dtype=float)
+
     arrays: dict[str, np.ndarray] = {
         "coordinates": coords,
         "cell_volumes": cell_vol,
         "wall_distance": wall_dist,
         "U": u_base,
+        "U_dns": u_dns,
         "p": p,
         "k": k,
         "omega": omega,
@@ -119,6 +124,9 @@ def extract_case_arrays(df_k: pd.DataFrame, df_r: pd.DataFrame) -> dict[str, np.
     arrays.update({f"tensor_basis/{k}": v for k, v in basis.items()})
     arrays["targets/a_delta"] = a_delta
     arrays["targets/Pk_delta"] = pk_delta
+    # DNS anisotropy itself: the oracle references corrections to the
+    # solver's own baseline, which needs b_dns on the mesh.
+    arrays["anisotropy/b_dns"] = b_dns
     return arrays
 
 

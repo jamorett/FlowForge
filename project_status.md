@@ -63,13 +63,13 @@ The **Python core is substantively implemented** (not just stubs). The **data fo
 | `library/findings/` | Stored research findings |
 | `library/modules/` | Composition module definitions |
 | `library/rejected/` | Rejected candidate archive |
-| `openfoam/templates/periodicHill/0/` | `U`, `p`, `k`, `omega` initial condition files |
-| `openfoam/templates/periodicHill/constant/` | `transportProperties`, `turbulenceProperties` |
-| `openfoam/templates/periodicHill/system/` | `controlDict`, `fvSchemes`, `fvSolution`, `blockMeshDict` |
-| `openfoam/templates/channel/`, `bump/`, `flatPlate/`, `squareDuct/` | Same — all 4 other case templates are empty |
-| `openfoam/src/correctedKOmegaSST/Make/` | `files` and `options` for wmake |
-| `tests/science/` | Only `.gitkeep` — no science/regression tests |
-| `prompts/*.yaml` | Substantive system prompts (currently 200-280 byte placeholders) |
+| `openfoam/templates/periodicHill/0/` | ✅ Present: `U`, `p`, `k`, `omega`, `PkDelta`, `aDelta` |
+| `openfoam/templates/periodicHill/constant/` | ✅ Present: `transportProperties`, `turbulenceProperties` |
+| `openfoam/templates/periodicHill/system/` | ✅ Present: `controlDict`, `fvSchemes`, `fvSolution`, `blockMeshDict` |
+| `openfoam/templates/channel/`, `bump/`, `flatPlate/`, `squareDuct/` | Still empty (only `.gitkeep`) — needed for multi-case runs |
+| `openfoam/src/correctedKOmegaSST/Make/` | ✅ Present: `files` and `options` for wmake (compile untested without Docker) |
+| `tests/science/` | ✅ Has `test_physics_science.py` (SO(3), Pope basis, realizability, zero-strain) |
+| `prompts/*.yaml` | ✅ Substantive v2 prompts for all 7 roles (~800-1050 bytes each) |
 | `runs/` | No experiment run artifacts yet |
 
 ---

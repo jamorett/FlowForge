@@ -34,7 +34,7 @@ def dispatch_role(
     runtime: ModelRuntime,
     context: dict[str, Any] | None = None,
     *,
-    max_tokens: int = 2048,
+    max_tokens: int = 8192,
 ) -> BaseModel:
     """Dispatch a single role call and return the validated Pydantic output.
 
@@ -48,7 +48,8 @@ def dispatch_role(
     context : dict, optional
         Role-specific context to inject into the prompt.
     max_tokens : int
-        Max tokens for the completion.
+        Max tokens for the completion (reasoning-heavy models need room;
+        default leaves space for chain-of-thought plus the answer).
 
     Returns
     -------

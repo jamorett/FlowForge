@@ -218,32 +218,16 @@ def render_error_map(
 
 
 @register("sam_segment")
-def sam_segment(image_path: str) -> list[dict[str, Any]]:
-    """Segment high-error regions (bubble, reattachment, shear layer)."""
-    p = Path(image_path)
-    npy_path = p.with_suffix(".npy")
-    if not npy_path.exists():
-        return [{"region": "global", "box": [0, 0, 100, 100], "severity": "medium"}]
+def sam_segment(image_path: str, use_api: bool = True) -> list[dict[str, Any]]:
+    """Segment high-error regions (bubble, reattachment, shear layer).
 
-    errors = np.load(npy_path)
-    threshold = float(np.percentile(errors, 90))
-    high_mask = errors >= threshold
-    h, w = errors.shape
+    Prefers SAM 3.1 via the Meta Model API; falls back to deterministic
+    local segmentation with no network. Every region carries ``source``:
+    ``"sam-3.1"`` or ``"local-fallback"`` (never misreported).
+    """
+    from flowforge.render.sam_client import segment_error_regions
 
-    # Identify primary high-error cluster
-    rows, cols = np.where(high_mask)
-    if len(rows) == 0:
-        return []
-
-    box = [int(cols.min()), int(rows.min()), int(cols.max()), int(rows.max())]
-    return [
-        {
-            "region": "separation_bubble" if box[0] < w // 2 else "shear_layer",
-            "box": box,
-            "max_error": float(errors.max()),
-            "mean_error": float(errors[high_mask].mean()),
-        }
-    ]
+    return segment_error_regions(image_path, use_api=use_api)["regions"]
 
 
 # ---------------------------------------------------------------------------

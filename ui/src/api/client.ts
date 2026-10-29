@@ -17,3 +17,15 @@ export function eventsSocket(session = "default"): WebSocket {
   const wsBase = base.replace(/^http/, "ws");
   return new WebSocket(`${wsBase}/ws/events?session=${encodeURIComponent(session)}`);
 }
+export interface RegionsData { image: string | null; source: string; model: string | null; regions: { region: string; box: number[]; max_error?: number; mean_error?: number; severity?: string; source?: string }[]; detail: string }
+export interface StartRoundResult { status: string; session?: string; mock?: boolean; events?: string; reason?: string }
+export async function startRound(session = "default", mock = true): Promise<StartRoundResult> {
+  const r = await fetch(`${base}/api/rounds/start?session=${encodeURIComponent(session)}&mock=${mock ? "true" : "false"}`, { method: "POST" });
+  if (!r.ok) throw new Error(`start round ${r.status}`);
+  return r.json() as Promise<StartRoundResult>;
+}
+export async function fetchLatestRegions(session = "default", useApi = false): Promise<RegionsData> {
+  const r = await fetch(`${base}/api/latest_regions?session=${encodeURIComponent(session)}&use_api=${useApi ? "true" : "false"}`);
+  if (!r.ok) throw new Error(`latest regions ${r.status}`);
+  return r.json() as Promise<RegionsData>;
+}

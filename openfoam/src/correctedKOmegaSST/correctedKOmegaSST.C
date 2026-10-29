@@ -2,15 +2,17 @@
 #include "addToRunTimeSelectionTable.H"
 #include "fvcGrad.H"
 
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
 namespace Foam
 {
 namespace RASModels
 {
 
-defineTypeNameAndDebug(correctedKOmegaSST, 0);
-addToRunTimeSelectionTable(RASModel, correctedKOmegaSST, dictionary);
+// * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-correctedKOmegaSST::correctedKOmegaSST
+template<class BasicTurbulenceModel>
+correctedKOmegaSST<BasicTurbulenceModel>::correctedKOmegaSST
 (
     const alphaField& alpha,
     const rhoField& rho,
@@ -26,9 +28,40 @@ correctedKOmegaSST::correctedKOmegaSST
     (
         alpha, rho, U, alphaRhoPhi, phi, transport, propertiesName, type
     )
-{}
+{
+    // Fixed-field ingestion (Mode A): construct the correction fields
+    // from the start-time directory now. A later registry lookup would
+    // always miss them because no other object ever reads these files.
+    // Absent files (plain SST cases) leave null pointers = identity.
+    IOobject aDeltaHeader
+    (
+        "aDelta",
+        U.time().timeName(),
+        U.mesh(),
+        IOobject::MUST_READ,
+        IOobject::NO_WRITE
+    );
+    if (aDeltaHeader.typeHeaderOk<volSymmTensorField>(false))
+    {
+        aDelta_.set(new volSymmTensorField(aDeltaHeader, U.mesh()));
+    }
+    IOobject pkDeltaHeader
+    (
+        "PkDelta",
+        U.time().timeName(),
+        U.mesh(),
+        IOobject::MUST_READ,
+        IOobject::NO_WRITE
+    );
+    if (pkDeltaHeader.typeHeaderOk<volScalarField>(false))
+    {
+        PkDelta_.set(new volScalarField(pkDeltaHeader, U.mesh()));
+    }
+}
 
-scalar correctedKOmegaSST::correctedProduction
+
+template<class BasicTurbulenceModel>
+Foam::scalar correctedKOmegaSST<BasicTurbulenceModel>::correctedProduction
 (
     const scalar G,
     const scalar k,
@@ -37,20 +70,22 @@ scalar correctedKOmegaSST::correctedProduction
 ) const
 {
     // Pk_corrected = min(G, 10*betaStar*k*omega) + PkDelta, clamped >= 0.
-    const scalar pkLimited = min(G, 10.0*betaStar_.value()*k*omega);
+    const scalar pkLimited = min(G, 10.0*this->betaStar_.value()*k*omega);
     return max(pkLimited + pkDelta, scalar(0));
 }
 
-void correctedKOmegaSST::correct()
+
+template<class BasicTurbulenceModel>
+void correctedKOmegaSST<BasicTurbulenceModel>::correct()
 {
     // Base SST first. With zero/absent corrections this is the exact
-    // baseline path: nut_ is never touched (identity gate, diff < 1e-6).
+    // baseline path: nut is never touched (identity gate, diff < 1e-6).
     kOmegaSST<BasicTurbulenceModel>::correct();
 
-    const bool hasADelta =
-        this->mesh_.foundObject<volSymmTensorField>("aDelta");
-    const bool hasPkDelta =
-        this->mesh_.foundObject<volScalarField>("PkDelta");
+    // Members read in the constructor (fixed-field Mode A). A registry
+    // lookup would always miss: nothing else ever reads these files.
+    const bool hasADelta = aDelta_.valid();
+    const bool hasPkDelta = PkDelta_.valid();
 
     scalar modeBMax = 0;
     // Mode B is compiled in; the default hook returns exactly 0.
@@ -63,15 +98,11 @@ void correctedKOmegaSST::correct()
     }
 
     const volSymmTensorField* aDeltaPtr =
-        hasADelta
-      ? &this->mesh_.lookupObject<volSymmTensorField>("aDelta")
-      : nullptr;
+        hasADelta ? aDelta_.ptr() : nullptr;
     const volScalarField* pkDeltaPtr =
-        hasPkDelta
-      ? &this->mesh_.lookupObject<volScalarField>("PkDelta")
-      : nullptr;
+        hasPkDelta ? PkDelta_.ptr() : nullptr;
 
-    // Identity guard: zero corrections must not perturb nut_ at all.
+    // Identity guard: zero corrections must not perturb nut at all.
     scalar maxADelta = 0;
     scalar maxPkDelta = 0;
     if (aDeltaPtr)
@@ -94,38 +125,107 @@ void correctedKOmegaSST::correct()
         return;
     }
 
-    // Non-zero correction: apply through nut_ as the stress surrogate
-    //   delta_nut = 2*k*mag(aDelta) / max(omega, 1e-6)
-    // scaled by Pk_corrected / max(Pk_base, 1e-6) so the production
-    // clamp (Pk >= 0) is honoured. Full equation-level Pk injection
-    // requires overriding the k/omega sources; until the Docker wmake
-    // probe passes, this nut-level coupling is the shipped Mode A path
-    // and is labelled as such (never presented as an equation solve).
+    // Non-zero correction: apply through nut as the stress surrogate
+    // (delta_nut/scaling comments above). v2512's momentum equation
+    // reads the eddyViscosity MEMBER, not the registry object, so the
+    // member is modified directly; a registry lookup would only leak
+    // through wall BCs and leave the interior untouched.
+    volScalarField& nut = this->nut_;
+
     tmp<volTensorField> tGradU = fvc::grad(this->U_);
     const volTensorField& gradU = tGradU();
 
-    forAll(this->nut_, celli)
+    forAll(nut, celli)
     {
         const scalar k = max(this->k_[celli], scalar(0));
         const scalar omega = this->omega_[celli];
-        const scalar denom = guardedDenom(omega);
         const symmTensor S = symm(gradU[celli]);
-        const scalar G = 2.0*this->nut_[celli]*max(S && S, scalar(0));
+        const scalar G = 2.0*nut[celli]*max(S && S, scalar(0));
         const scalar pkDelta =
             pkDeltaPtr ? (*pkDeltaPtr)[celli] : scalar(0);
         const scalar pkBase =
-            min(G, 10.0*betaStar_.value()*k*omega);
+            min(G, 10.0*this->betaStar_.value()*k*omega);
         const scalar pkCorr = correctedProduction(G, k, omega, pkDelta);
         const scalar pkFactor = pkCorr/guardedDenom(pkBase);
-        const scalar magA =
-            aDeltaPtr ? mag((*aDeltaPtr)[celli]) : scalar(0);
-        const scalar deltaNut = 2.0*k*magA/denom;
-
-        this->nut_[celli] =
-            max(this->nut_[celli]*pkFactor + deltaNut, scalar(0));
+        // No isotropic deltaNut surrogate: the tensorial correction
+        // travels through divDevReff; an added 2k|a|/omega viscosity
+        // only thickens diffusion and damps the redistribution.
+        nut[celli] = max(nut[celli]*pkFactor, scalar(0));
     }
-    this->nut_.correctBoundaryConditions();
+    nut.correctBoundaryConditions();
+
+    // Explicit stress correction for divDevReff, rebuilt from the
+    // current k every iteration (frozen aDelta, live k).
+    if (aDeltaPtr)
+    {
+        if (!tauDelta_.valid())
+        {
+            tauDelta_.set
+            (
+                new volSymmTensorField
+                (
+                    IOobject
+                    (
+                        "tauDelta",
+                        this->mesh().time().timeName(),
+                        this->mesh(),
+                        IOobject::NO_READ,
+                        IOobject::NO_WRITE
+                    ),
+                    2.0*this->k_*(*aDeltaPtr)
+                )
+            );
+        }
+        else
+        {
+            tauDelta_() = 2.0*this->k_*(*aDeltaPtr);
+        }
+    }
 }
+
 
 } // End namespace RASModels
 } // End namespace Foam
+
+
+template<class BasicTurbulenceModel>
+Foam::tmp<Foam::fvVectorMatrix>
+Foam::RASModels::correctedKOmegaSST<BasicTurbulenceModel>::divDevReff
+(
+    volVectorField& U
+) const
+{
+    tmp<fvVectorMatrix> tdivTau =
+        kOmegaSST<BasicTurbulenceModel>::divDevReff(U);
+    if (tauDelta_.valid())
+    {
+        tdivTau.ref() -= fvc::div(tauDelta_());
+    }
+    return tdivTau;
+}
+
+// * * * * * * * * * Concrete registration (incompressible) * * * * * * * * //
+
+#include "turbulentTransportModels.H"
+
+defineTurbulenceModelTypes
+(
+    geometricOneField,
+    geometricOneField,
+    incompressibleTurbulenceModel,
+    IncompressibleTurbulenceModel,
+    transportModel
+);
+
+makeBaseTurbulenceModel
+(
+    geometricOneField,
+    geometricOneField,
+    incompressibleTurbulenceModel,
+    IncompressibleTurbulenceModel,
+    transportModel
+);
+
+makeRASModel(correctedKOmegaSST);
+
+// ************************************************************************* //
