@@ -28,7 +28,7 @@ check pass.
   Zarr stores with frozen-RANS targets (`a_delta`, `Pk_delta`, `U_dns`,
   `b_dns`). Raw CSVs and processed stores stay out of git (CC-BY-4.0, ~884 MB).
 - **SAM 3.1** (`flowforge/render/sam_client.py`): error maps stream to
-  `POST <base>/responses` (`model: sam-3.1`, same Bearer key). Concept prompt
+  `POST <base>/responses` (`model: sam-3.1`, same Bearer `MODEL_API_KEY`). Concept prompt
   first; on zero matches the local box is re-sent as a box prompt and SAM
   answers with a refined box plus mask under our id. Every result is labeled
   `sam-3.1`, `local-fallback`, or `none` — never misreported.
@@ -63,7 +63,7 @@ Open:
   k). Per the build spec, coupled evaluation continues; frozen-RANS
   a-priori scoring carries the candidate ranking meanwhile.
 
-## Setup (fresh clone, friend's PC included)
+## Setup (fresh clone)
 
 Prereqs: Python 3.12, Node 18+, Docker Desktop, a Meta Model API key.
 
@@ -86,12 +86,13 @@ Prereqs: Python 3.12, Node 18+, Docker Desktop, a Meta Model API key.
    (DNS oracle, ~3–7 min).
 6. Serve: `python -m uvicorn flowforge.api.server:app --port 8000`, then
    `cd ui && npm run dev` (needs `VITE_API=http://localhost:8000`) and open
-   the Vite address (usually `http://localhost:5173`). Start a mock round
-   from Mission Control, then a live one once mock looks right.
+   the Vite address (usually `http://localhost:5173`). Start with a mock
+   round from Mission Control to validate the setup before running a live
+   round.
 
-Honest costs: live rounds and SAM calls spend API credits (about $0.60
-observed for the first live rounds); mock mode and `FLOWFORGE_REPLAY=1`
-spend nothing. Solver-gate runs each take minutes of container time.
+Costs: live rounds and SAM calls consume API credits (approximately $0.60
+observed for the initial live rounds); mock mode and `FLOWFORGE_REPLAY=1`
+incur no cost. Solver-gate runs each require minutes of container time.
 
 ## Guardrails
 
