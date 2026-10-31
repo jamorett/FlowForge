@@ -371,7 +371,8 @@ def score_on_cases(
     Returns:
         Mapping ``case_id -> {"mse", "mse_zero", "ratio", "n_used",
         "n_excluded"}``. A case that cannot be loaded
-        (``FileNotFoundError``) or scored (``ValueError``, ``KeyError``)
+        (``FileNotFoundError``) or scored (``ValueError``, ``KeyError``,
+        ``AssertionError`` from physics guards)
         yields ``{"error": "<message>"}`` for that case.
         ``PermissionError`` (locked data) propagates.
     """
@@ -389,6 +390,6 @@ def score_on_cases(
             continue
         try:
             scores[case_id] = score_expression(expression, inv, basis, target)
-        except (ValueError, KeyError) as exc:
+        except (ValueError, KeyError, AssertionError) as exc:
             scores[case_id] = {"error": str(exc)}
     return scores

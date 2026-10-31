@@ -138,3 +138,28 @@ def test_locked_path_denied(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
     assert all(line.startswith("DENIED") for line in lines)
     assert any("any_case" in line for line in lines)
     assert any("evil" in line for line in lines)
+
+
+def test_score_on_cases_reports_error_payload(monkeypatch: pytest.MonkeyPatch) -> None:
+    import flowforge.data.frozen_fields as frozen
+
+    rng = np.random.default_rng(3)
+    n = 60
+    inv = {k: rng.uniform(-2.0, 2.0, size=n) for k in ("I1", "I2", "I3", "I4", "I5")}
+    basis = {}
+    for k in ("T1", "T2", "T3"):
+        mat = rng.normal(size=(n, 3, 3))
+        sym = 0.5 * (mat + np.swapaxes(mat, -1, -2))
+        trace = np.trace(sym, axis1=-2, axis2=-1)[..., None, None]
+        basis[k] = sym - trace / 3.0 * np.eye(3)
+    target = np.zeros((n, 3, 3))
+
+    def fake_load(case_ids, processed_dir="data/processed", max_points_per_case=None, seed=0):
+        assert list(case_ids) == ["big"]
+        return inv, basis, target
+
+    monkeypatch.setattr(frozen, "load_frozen_fields", fake_load)
+    # exp(50*I1) overflows -> physics-guard AssertionError must become an
+    # error payload, never an escaped exception (mini-probe).
+    scores = frozen.score_on_cases("0.05 * exp(50.0 * I1) * T2", ["big"])
+    assert "error" in scores["big"]

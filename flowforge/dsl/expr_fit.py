@@ -62,7 +62,7 @@ def fit_expression(expression: str, invariants, basis, target, snap: bool = True
     from flowforge.dsl.evaluate import candidate_anisotropy
     from flowforge.dsl.parser import validate_candidate
     from flowforge.ladder.ladder import apriori_mse
-    errors = (ValueError, TypeError, ArithmeticError, np.linalg.LinAlgError, sympy.SympifyError, tokenize.TokenError)
+    errors = (ValueError, TypeError, ArithmeticError, np.linalg.LinAlgError, sympy.SympifyError, tokenize.TokenError, AssertionError)
     original = expression
     try:
         validate_candidate(original)

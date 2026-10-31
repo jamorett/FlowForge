@@ -71,3 +71,23 @@ def test_snap_keeps_improvement():
     validate_candidate(res["expression"])
     if res["status"] == "ok":
         assert res["mse_after"] < res["mse_before"]
+
+
+def test_overflow_candidate_never_raises():
+    import numpy as np
+
+    rng = np.random.default_rng(3)
+    n = 100
+    inv = {k: rng.uniform(-2.0, 2.0, size=n) for k in ("I1", "I2", "I3", "I4", "I5")}
+    basis = {}
+    for k in ("T1", "T2", "T3"):
+        mat = rng.normal(size=(n, 3, 3))
+        sym = 0.5 * (mat + np.swapaxes(mat, -1, -2))
+        trace = np.trace(sym, axis1=-2, axis2=-1)[..., None, None]
+        basis[k] = sym - trace / 3.0 * np.eye(3)
+    target = candidate_anisotropy("0.1 * T1", inv, basis)
+    # exp(50*I1) overflows during the least-squares probe: must be a
+    # fit_failed rejection, never an escaped AssertionError (mini-probe).
+    res = fit_expression("0.05 * exp(50.0 * I1) * T2", inv, basis, target, snap=False)
+    assert res["status"] == "fit_failed"
+    assert res["mse_after"] is None
