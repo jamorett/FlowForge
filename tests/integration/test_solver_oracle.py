@@ -41,7 +41,11 @@ from flowforge.solver.runner import OpenFOAMSolverRunner, default_image
 
 STAGE_ROOT = Path("runs/cache/test-stages")
 TEMPLATE = Path("openfoam/templates/periodicHill")
-STORE = Path("data/processed/periodic_hill_re10595")
+# case_1p0 (alpha=1, L=9): the "re10595" store is case_1p5 (alpha=1.5, L=10.93, Re 5600)
+STORE = Path("data/processed/periodic_hill_re5600")
+# Re_h=5600 uses the crest bulk velocity; meanVelocityForce fixes the
+# volume average (=1), and Ub_crest/Ub_vol = 1.262 in the DNS -> nu = 1.262/5600.
+NU_RE5600 = "2.254e-4"
 TOLERANCES = Path("configs/tolerances.yaml")
 
 
@@ -80,6 +84,9 @@ def _stage_hill(path: Path, model: str) -> Path:
     """Stage a hill-mesh case: dataset wall + correctors for skewness."""
     case = path / "case"
     shutil.copytree(TEMPLATE, case)
+    tp = case / "constant" / "transportProperties"
+    tp.write_text(tp.read_text(encoding="utf-8").replace("9.44e-5", NU_RE5600),
+                  encoding="utf-8")
     fv = case / "system" / "fvSolution"
     text = fv.read_text(encoding="utf-8")
     fv.write_text(text.replace("nNonOrthogonalCorrectors 0",

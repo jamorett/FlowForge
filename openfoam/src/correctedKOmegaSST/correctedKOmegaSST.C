@@ -1,8 +1,25 @@
 #include "correctedKOmegaSST.H"
 #include "addToRunTimeSelectionTable.H"
 #include "fvcGrad.H"
+#include "wallFvPatch.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+
+// Reynolds stress vanishes at a no-slip wall: the explicit correction must
+// not add a stress on wall faces (zeroGradient would copy the first-cell
+// value onto the wall and corrupt the wall shear).
+static void zeroWallStress(Foam::volSymmTensorField& tau)
+{
+    auto& bf = tau.boundaryFieldRef();
+    forAll(bf, patchi)
+    {
+        if (Foam::isA<Foam::wallFvPatch>(tau.mesh().boundary()[patchi]))
+        {
+            bf[patchi] = Foam::symmTensor::zero;
+        }
+    }
+}
 
 namespace Foam
 {
@@ -180,6 +197,7 @@ void correctedKOmegaSST<BasicTurbulenceModel>::correct()
         {
             tauDelta_() = 2.0*this->k_*(*aDeltaPtr);
         }
+        zeroWallStress(tauDelta_());
     }
 }
 
@@ -199,7 +217,8 @@ Foam::RASModels::correctedKOmegaSST<BasicTurbulenceModel>::divDevReff
         kOmegaSST<BasicTurbulenceModel>::divDevReff(U);
     if (tauDelta_.valid())
     {
-        tdivTau.ref() -= fvc::div(tauDelta_());
+        // divDevReff represents +div(R): a stress correction is ADDED.
+        tdivTau.ref() += fvc::div(tauDelta_());
     }
     return tdivTau;
 }
