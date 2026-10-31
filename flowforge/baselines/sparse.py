@@ -14,6 +14,12 @@ _TENSOR_NAMES = ("T1", "T2", "T3")
 _ALPHA_GRID = (1e-6, 1e-5, 1e-4, 1e-3, 1e-2)
 _N_FOLDS = 3
 _N_COMPONENTS = 9
+# Frozen collinearity rule (RP2 fairness, decided before experiments):
+# scalar features duplicating an earlier one with |corr > threshold| are
+# removed from the library. 0.999 keeps tanh() on unit-scale synthetic data
+# (corr ~0.998) but drops it on real frozen-RANS data where tanh(I) == I to
+# 1e-6 (corr > 0.999999), along with I1*I2 which duplicates I5 exactly.
+_COLLINEARITY_THRESHOLD = 0.999
 
 
 def _feature_values(name: str, invariants: dict[str, np.ndarray]) -> np.ndarray:
@@ -30,6 +36,43 @@ def _feature_values(name: str, invariants: dict[str, np.ndarray]) -> np.ndarray:
     if name == "tanh(I2)":
         return np.tanh(np.asarray(invariants["I2"], dtype=float))
     return np.asarray(invariants[name], dtype=float)
+
+
+def _scalar_corr(first: np.ndarray, second: np.ndarray) -> float:
+    """Pearson correlation, 0.0 when either input is constant."""
+    a = np.asarray(first, dtype=float).reshape(-1)
+    b = np.asarray(second, dtype=float).reshape(-1)
+    a = a - a.mean()
+    b = b - b.mean()
+    denom = float(np.sqrt(float(a @ a) * float(b @ b)))
+    if denom == 0.0:
+        return 0.0
+    return float((a @ b) / denom)
+
+
+def collinearity_dropped_features(
+    invariants: dict[str, np.ndarray],
+    feature_names: tuple[str, ...] | list[str] | None = None,
+    threshold: float = _COLLINEARITY_THRESHOLD,
+) -> tuple[list[str], list[str]]:
+    """Split scalar features into kept/dropped by the frozen collinearity rule.
+
+    The first feature in ``_FEATURE_NAMES`` order is always kept (in
+    particular the constant ``"1"``); a later feature is dropped when its
+    absolute correlation with any kept feature exceeds ``threshold``.
+    Deterministic: same inputs always give the same split.
+    """
+    names = list(feature_names) if feature_names is not None else list(_FEATURE_NAMES)
+    values = {name: _feature_values(name, invariants) for name in names}
+    kept: list[str] = []
+    dropped: list[str] = []
+    for name in names:
+        duplicate = any(
+            abs(_scalar_corr(values[name], values[other])) > float(threshold)
+            for other in kept
+        )
+        (dropped if duplicate else kept).append(name)
+    return kept, dropped
 
 
 def _project_symmetric_traceless(raw: np.ndarray) -> np.ndarray:
@@ -57,24 +100,30 @@ def _round_sig(value: float, digits: int = 4) -> float:
 
 
 def _build_design(
-    invariants: dict[str, np.ndarray], basis: dict[str, np.ndarray]
+    invariants: dict[str, np.ndarray],
+    basis: dict[str, np.ndarray],
+    feature_names: tuple[str, ...] | list[str] | None = None,
 ) -> tuple[np.ndarray, list[tuple[str, str]], int]:
     """Build the flattened library matrix.
 
     Args:
         invariants: Mapping ``I1..I5`` to ``(N,)`` arrays.
         basis: Mapping with at least ``T1..T3`` to ``(N, 3, 3)`` arrays.
+        feature_names: Scalar features to include (default: all of
+            ``_FEATURE_NAMES``; pass the kept list from
+            :func:`collinearity_dropped_features`).
 
     Returns:
         ``(design, pairs, n_points)`` where ``design`` is ``(N*9, P)``,
         ``pairs`` lists the ``(feature, tensor)`` for each column and
         ``n_points`` is ``N``.
     """
+    names = list(feature_names) if feature_names is not None else list(_FEATURE_NAMES)
     pairs: list[tuple[str, str]] = []
     flat_columns: list[np.ndarray] = []
     for tensor in _TENSOR_NAMES:
         basis_arr = np.asarray(basis[tensor], dtype=float)
-        for feature in _FEATURE_NAMES:
+        for feature in names:
             feat = _feature_values(feature, invariants)
             raw = feat[..., None, None] * basis_arr
             dev = _project_symmetric_traceless(raw)
@@ -300,15 +349,19 @@ def fit_sparse_baseline(
 
     Returns:
         ``{"expression", "terms", "train", "alpha", "cv", "l1_ratio",
-        "max_terms", "seed"}`` where ``train`` is
+        "max_terms", "seed", "features", "dropped_features",
+        "collinearity_threshold"}`` where ``train`` is
         :func:`flowforge.data.frozen_fields.score_expression` on the emitted
         expression, ``alpha`` is the used penalty and ``cv`` maps each grid
         alpha to its mean held-out MSE (``None`` when ``alpha`` is explicit).
+        ``features``/``dropped_features`` record the frozen collinearity
+        split so the library is reproducible from the result alone.
     """
     from flowforge.data.frozen_fields import score_expression
 
     target_arr = np.asarray(target, dtype=float)
-    design, pairs, n_points = _build_design(invariants, basis)
+    kept_features, dropped_features = collinearity_dropped_features(invariants)
+    design, pairs, n_points = _build_design(invariants, basis, kept_features)
     response = np.asarray(target_arr.reshape(-1), dtype=float)
     if alpha is None:
         grid = tuple(float(item) for item in _ALPHA_GRID)
@@ -331,6 +384,9 @@ def fit_sparse_baseline(
         "l1_ratio": l1_ratio,
         "max_terms": max_terms,
         "seed": seed,
+        "features": kept_features,
+        "dropped_features": dropped_features,
+        "collinearity_threshold": _COLLINEARITY_THRESHOLD,
     }
 
 

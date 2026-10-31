@@ -135,3 +135,33 @@ def test_explicit_alpha_bypasses_cv(monkeypatch):
     result = fit_sparse_baseline(invariants, basis, target, max_terms=4, seed=42, alpha=1e-3)
     assert result["alpha"] == 1e-3
     assert result["cv"] is None
+
+
+def test_no_drop_on_independent_synthetic_features():
+    from flowforge.baselines.sparse import collinearity_dropped_features
+
+    invariants, _ = synthetic_fields(n=400, seed=7)
+    kept, dropped = collinearity_dropped_features(invariants)
+    assert dropped == []
+    assert kept == ["1", "I1", "I2", "I3", "I4", "I5", "I1*I2", "tanh(I1)", "tanh(I2)"]
+
+
+def test_collinear_tanh_duplicates_dropped_on_small_invariants():
+    from flowforge.baselines.sparse import collinearity_dropped_features
+    from flowforge.dsl.parser import validate_candidate
+
+    rng = np.random.default_rng(3)
+    small = {key: rng.uniform(-0.02, 0.02, size=300) for key in _INVARIANT_KEYS}
+    kept, dropped = collinearity_dropped_features(small)
+    assert "tanh(I1)" in dropped
+    assert "tanh(I2)" in dropped
+    assert "I1" in kept and "I2" in kept
+
+    _, basis = synthetic_fields(n=300, seed=3)
+    _, target = _target_from_expression(
+        {**small, "I1": small["I1"], "I2": small["I2"]}, basis
+    )
+    result = fit_sparse_baseline(small, basis, target, max_terms=4, seed=42)
+    assert result["dropped_features"] == dropped
+    assert result["collinearity_threshold"] == 0.999
+    validate_candidate(result["expression"])
