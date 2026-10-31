@@ -206,7 +206,10 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
     from flowforge.ladder.ladder import apriori_mse, run_ladder
 
     runtime = ModelRuntime(logger=event_logger)
-    inv, basis, target = synthetic_fields()
+    from flowforge.data.frozen_fields import load_frozen_fields, train_case_ids
+
+    _train_cases = train_case_ids()
+    inv, basis, target = load_frozen_fields(_train_cases, max_points_per_case=4000)
 
     # --- Step 1: Board ---
     lib_context = _build_library_context()
@@ -302,9 +305,11 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
         rung_data = ladder.get(rung, ladder.get(f"{rung}_passed", []))
         event_logger.log({
             "type": rung, "step": rung, "role": rung,
-            "round": round_no, "mock": False, "synthetic": True,
-            "source": "ladder", "mode": "live", "session": session_name,
+            "round": round_no, "mock": False, "synthetic": False,
+            "source": "frozen-rans", "mode": "frozen", "session": session_name,
             "prompt_hash": _prompt_hash_for(f"flowforge:round:{round_no}:step:{rung}"),
+            "cases": list(_train_cases),
+            "n_points": int(target.shape[0]),
             "survivors": json.loads(json.dumps(rung_data, default=float)) if isinstance(rung_data, list) else [],
         })
 
@@ -518,8 +523,22 @@ def run_round(round_no: int, mock: bool = False,
                 groups=groups, group_ids=group_ids, mechanisms=mechanisms,
             )
         except Exception as exc:
-            logger.error("Live round failed: %s; falling back to mock", exc)
-            # Fall through to mock path so the round always completes.
+            logger.error("Live round failed: %s", exc)
+            event_logger.log({
+                "type": "error", "step": "error", "role": "orchestrator",
+                "round": round_no, "session": session_name,
+                "error_type": type(exc).__name__, "error": str(exc),
+                "prompt_hash": _prompt_hash_for(f"flowforge:round:{round_no}:step:error"),
+            })
+            return {
+                "round": round_no, "mock": False, "proposed": len(candidates),
+                "survivors_rung1": [], "survivors_rung2": [], "final_rung3": [],
+                "champion": None, "status": "error",
+                "error_type": type(exc).__name__, "error": str(exc),
+                "session": session_name, "session_dir": str(resolved_dir),
+                "events_path": str(events_path),
+                "event_count": 1, "steps": list(ROUND_STEPS),
+            }
 
     # --- Mock mode: deterministic scoring on synthetic fields ---
     inv, basis, target = synthetic_fields()
