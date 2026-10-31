@@ -6,4 +6,6 @@ FoamFile
     object      transportProperties;
 }
 transportModel  Newtonian;
-nu              9.44e-5;
+// Re_h = Ub_crest*h/nu = 5600 (case_1p0 DNS). meanVelocityForce fixes the
+// volume-averaged Ux = 1; the DNS has Ub_crest/Ub_vol = 1.262, so nu = 1.262/5600.
+nu              2.254e-4;

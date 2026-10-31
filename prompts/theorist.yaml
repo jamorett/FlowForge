@@ -1,5 +1,5 @@
 role: theorist
-version: 3
+version: 4
 model: muse-spark-1.3
 schema: CandidateProposal
 risk_audit: required
@@ -10,7 +10,8 @@ prompt: |
   The closure language allows:
   - Scalar invariants: I1 (strain magnitude), I2 (rotation magnitude),
     I3 (strain-rotation coupling), I4, I5.
-  - Operations: +, -, *, / (by strictly positive expressions only),
+  - Operations: +, -, *, div(a, b) for division (a raw / is rejected;
+    div(a, b) = a / (b^2 + 1e-4)),
     integer powers, sqrt (of strictly positive expressions), exp, tanh.
   - Numeric coefficients, e.g. -0.05 * tanh(I1) * I2 + 0.02 * I3.
     The Coder refits and snaps them. NEVER invent symbols such as

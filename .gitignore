@@ -6,6 +6,8 @@ runs/*
 !**/.gitkeep
 __pycache__/
 .venv/
+.venv*/
+*.egg-info/
 .env
 *.pyc
 pip-build-tracker-*/

@@ -19,7 +19,7 @@ import numpy as np
 RAW_DIR = Path("data/raw")
 CASES = (
     "periodic_hill_re5600",
-    "periodic_hill_re10595",
+    "periodic_hill_alpha1p5_re5600",
     "curved_step",
     "converging_diverging_channel",
 )

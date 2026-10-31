@@ -1,13 +1,11 @@
 # FlowForge OpenFOAM farm image (S1). Build once the Docker daemon runs:
 #   docker build -f docker/openfoam.Dockerfile -t flowforge-openfoam:local .
-# Then point the runner at it:
-#   FLOWFORGE_OPENFOAM_IMAGE=flowforge-openfoam:local
-# The base tag is pinned at build time: pick the ESI release closest to the
-# dataset's v2006 from the available opencfd/openfoam-default tags
-# (list them with `docker search` / Hub tags when the daemon is up) and
-# replace `latest` below. The runner default moves with it via
-# FLOWFORGE_OPENFOAM_IMAGE; keep the two in sync.
-ARG OPENFOAM_TAG=latest
+# flowforge-openfoam:local is the runner's default image
+# (FLOWFORGE_OPENFOAM_IMAGE overrides it).
+# The base tag is pinned to ESI v2512: the RUN line below hard-codes the
+# openfoam2512 bashrc path, so `latest` breaks the build as soon as a new
+# release is tagged. Bump both together.
+ARG OPENFOAM_TAG=2512
 FROM opencfd/openfoam-default:${OPENFOAM_TAG}
 # FlowForge: compile the correctedKOmegaSST closure class into the image.
 WORKDIR /workspace

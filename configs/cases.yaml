@@ -3,7 +3,7 @@ cases:
   - id: periodic_hill_re5600
     split: train
     source: curated
-  - id: periodic_hill_re10595
+  - id: periodic_hill_alpha1p5_re5600
     split: train
     source: curated
   - id: curved_step

@@ -89,15 +89,13 @@ def compute_run_hash(case_name: str, mesh_hash: str, solver_settings: dict) -> s
     return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
 
-DEFAULT_IMAGE = "opencfd/openfoam-default:latest"
+# Built from docker/openfoam.Dockerfile. The stock OpenCFD image lacks
+# libcorrectedKOmegaSST, so every corrected run would fail on it.
+DEFAULT_IMAGE = "flowforge-openfoam:local"
 
 
 def default_image() -> str:
-    """Image for solver runs. Override with FLOWFORGE_OPENFOAM_IMAGE.
-
-    Must match docker/openfoam.Dockerfile's OPENFOAM_TAG build; the
-    tag itself is pinned at build time (see the Dockerfile).
-    """
+    """Image for solver runs. Override with FLOWFORGE_OPENFOAM_IMAGE."""
     import os
 
     return os.environ.get("FLOWFORGE_OPENFOAM_IMAGE", DEFAULT_IMAGE)

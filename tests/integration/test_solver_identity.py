@@ -31,20 +31,34 @@ def _image() -> str:
     return os.environ.get("FLOWFORGE_OPENFOAM_IMAGE", default_image())
 
 
-def _docker_ok() -> bool:
+def _docker_state() -> str:
+    """'ok', 'no-cli' (no Docker here, e.g. CI), 'daemon-down' or 'no-image'."""
     try:
         if subprocess.run(["docker", "info"], capture_output=True,
                           timeout=30).returncode != 0:
-            return False
-        return subprocess.run(
-            ["docker", "image", "inspect", _image()],
-            capture_output=True, timeout=30).returncode == 0
-    except Exception:
-        return False
+            return "daemon-down"
+        if subprocess.run(["docker", "image", "inspect", _image()],
+                          capture_output=True, timeout=30).returncode != 0:
+            return "no-image"
+        return "ok"
+    except FileNotFoundError:
+        return "no-cli"
+    except subprocess.TimeoutExpired:
+        return "daemon-down"
 
 
+_DOCKER = _docker_state()
 needs_docker = pytest.mark.skipif(
-    not _docker_ok(), reason="no Docker daemon: solver gates unverifiable here")
+    _DOCKER in ("no-cli", "no-image"),
+    reason=f"solver gate unverifiable here ({_DOCKER}: no Docker CLI or image not built)")
+
+
+@pytest.fixture(autouse=True)
+def _docker_daemon_must_run() -> None:
+    # Docker installed but stopped is a local setup error, not a reason to
+    # skip: a silent skip exits 0 and reads like a pass.
+    if _DOCKER == "daemon-down":
+        pytest.fail("Docker CLI found but the daemon is not running: start Docker Desktop")
 
 
 def _stage(tmp_path: Path, model: str) -> Path:

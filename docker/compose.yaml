@@ -1,11 +1,13 @@
+# Builds the solver image only: `docker compose -f docker/compose.yaml build`.
+# The farm needs no long-running service; the Python runner starts one
+# `docker run --rm` container per case. The API (uvicorn) and the UI
+# (`npm run dev` in ui/) run on the host, see README.
 services:
-  api:
+  solver:
     build:
       context: ..
       dockerfile: docker/openfoam.Dockerfile
+      args:
+        OPENFOAM_TAG: "2512"
+    image: flowforge-openfoam:local
     init: true
-  ui:
-    image: node:20-alpine
-    working_dir: /ui
-    volumes:
-      - ../ui:/ui

@@ -53,15 +53,15 @@ Green:
 Open:
 
 - **Oracle gate** (`tests/integration/test_solver_oracle.py`, frozen
-  `oracle_ratio: 0.70`): DNS-derived corrections on the data-derived hill
-  mesh move the solution the right way, but the 0.70 bar is not met:
-  single-shot ratio ≈ 0.97 (reattachment zone ≈ 0.89), 3-pass
-  recalibration loop 0.967 (non-compounding). The gate stays red until
-  the ratio clears — no tolerance was touched. Known blockers: uniform
-  mesh can't represent DNS wall layers (wall-graded meshing is staged in
-  `hill_mesh.py`), and the live-k gap (correction uses solved k, not DNS
-  k). Per the build spec, coupled evaluation continues; frozen-RANS
-  a-priori scoring carries the candidate ranking meanwhile.
+  `oracle_ratio: 0.70`): still red. Fixed so far: the stress correction
+  sign in `divDevReff`, a spurious stress on wall faces, the oracle case
+  (the old "Re 10595" store was case_1p5, the alpha=1.5 hill at Re 5600)
+  and nu (Re_h on the crest bulk velocity -> 2.254e-4). First pass now
+  0.855 (was 0.967); the 3-pass recalibration loop diverges (1.24, 1.43).
+  Even live injection of the exact DNS stress gives ~1.15, so the
+  remaining gap is case/DNS equivalence (mesh, wall treatment, mapping).
+  No tolerance was touched. Per the build spec, frozen-RANS a-priori
+  scoring carries the candidate ranking.
 
 ## Setup (fresh clone)
 
@@ -75,11 +75,13 @@ Prereqs: Python 3.12, Node 18+, Docker Desktop, a Meta Model API key.
    (tiny smoke corpus) or drop the Kaggle CSVs (`komegasst.csv`, `REF.csv`)
    into `data/raw/` and run `python -m flowforge.data.ingest_csv`.
 4. Solver image: `docker build -f docker/openfoam.Dockerfile
-   -t flowforge-openfoam:local .` (compiles `libcorrectedKOmegaSST`;
-   takes several minutes once), then
-   `FLOWFORGE_OPENFOAM_IMAGE=flowforge-openfoam:local` (or export it).
+   -t flowforge-openfoam:local .` (or `docker compose -f
+   docker/compose.yaml build`). Compiles `libcorrectedKOmegaSST` on
+   OpenFOAM v2512; takes several minutes once. `flowforge-openfoam:local`
+   is the runner default (`FLOWFORGE_OPENFOAM_IMAGE` overrides it).
 5. Tests: `python -m pytest tests/unit -q` (fast, no Docker/key).
-   Integration/solver gates need Docker + the image and take minutes:
+   Integration/solver gates need Docker Desktop running + the image and
+   take minutes (a stopped daemon fails the gates instead of skipping):
    `python -m pytest tests/integration/test_solver_identity.py -q`
    (identity + injection, ~6 min),
    `python -m pytest tests/integration/test_solver_oracle.py -q`

@@ -1,0 +1,5 @@
+# OpenFOAM and Docker files run inside Linux containers: a Windows CRLF
+# checkout breaks wmake (`\` + CR in Make/options is not a continuation).
+openfoam/** text eol=lf
+docker/** text eol=lf
+*.sh text eol=lf

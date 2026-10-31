@@ -72,12 +72,21 @@ def dispatch_role(
     logger.info("Dispatching role=%s model=%s schema=%s prompt_hash=%s",
                 role, model, schema.__name__, p_hash[:12])
 
+    # Sampling settings live in configs/budgets.yaml (roles.<role>):
+    # `temperature` and `reasoning` (sent as reasoning_effort). A role
+    # without an entry keeps the API defaults.
+    from flowforge.config import load_budgets
+
+    role_cfg = load_budgets()["roles"].get(role, {})
+
     try:
         result = runtime.complete_structured(
             model=model,
             prompt=full_prompt,
             schema=schema,
             max_tokens=max_tokens,
+            temperature=role_cfg.get("temperature"),
+            reasoning_effort=role_cfg.get("reasoning"),
         )
     except ModelValidationError as exc:
         logger.error("Role %s failed validation: %s", role, exc)

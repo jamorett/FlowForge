@@ -5,7 +5,7 @@
   "complexity": 1,
   "description_length_bits": 8.5,
   "mechanisms": ["isotropic_eddy_viscosity", "boussinesq_hypothesis"],
-  "training_cases": ["periodic_hill_re5600", "periodic_hill_re10595"],
+  "training_cases": ["periodic_hill_re5600", "periodic_hill_alpha1p5_re5600"],
   "status": "baseline",
   "constants": {},
   "created_at": "2026-10-26T00:00:00Z"

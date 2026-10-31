@@ -152,7 +152,7 @@ def matrix(session: str = "default") -> dict:
         "session": session,
         "candidates": candidates,
         "flows": {
-            "train": ["periodic_hill_re5600", "periodic_hill_re10595"],
+            "train": ["periodic_hill_re5600", "periodic_hill_alpha1p5_re5600"],
             "generated": attacks,
             "locked": ["square_duct", "nasa_wall_mounted_hump"],
         },

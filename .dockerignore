@@ -1,0 +1,5 @@
+# The solver image only needs the closure source (docker/openfoam.Dockerfile
+# COPYs nothing else); keep data/, runs/ and ui/node_modules out of the
+# build context.
+*
+!openfoam/src/correctedKOmegaSST

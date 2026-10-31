@@ -2,7 +2,7 @@
   "id": "atk_002_re_sweep",
   "name": "High Reynolds Number Stability Sweep",
   "role": "redteam",
-  "base_case": "periodic_hill_re10595",
+  "base_case": "periodic_hill_alpha1p5_re5600",
   "parameter_sweeps": {
     "reynolds_number": 37000,
     "slope_steepness_alpha": 1.0

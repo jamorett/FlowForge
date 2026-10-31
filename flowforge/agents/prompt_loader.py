@@ -87,6 +87,20 @@ def build_prompt(role: str, context: dict[str, Any] | None = None) -> str:
             else:
                 sections.append(str(value))
 
+    # The model never sees the Pydantic classes: without the field names
+    # it invents its own keys and every live call fails validation.
+    from flowforge.agents import schemas as _schemas
+
+    schema_cls = getattr(_schemas, str(schema), None)
+    if schema_cls is not None:
+        import json
+
+        sections.append("")
+        sections.append("## Output format")
+        sections.append("Return ONE JSON object that validates against this JSON Schema "
+                        "(no other keys):")
+        sections.append(f"```json\n{json.dumps(schema_cls.model_json_schema(), indent=2)}\n```")
+
     return "\n".join(sections)
 
 

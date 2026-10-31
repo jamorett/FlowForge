@@ -2,7 +2,7 @@
 
 Extracts canonical cases from data/raw/komegasst.csv and data/raw/REF.csv:
   - periodic_hill_re5600 (case_1p0) -> data/processed/periodic_hill_re5600
-  - periodic_hill_re10595 (case_1p5) -> data/processed/periodic_hill_re10595
+  - periodic_hill_alpha1p5_re5600 (case_1p5: hill steepness alpha=1.5, Re_h 5600) -> data/processed/periodic_hill_alpha1p5_re5600
   - curved_step (cbfs13700) -> data/processed/curved_step
   - converging_diverging_channel (convdiv12600) -> data/processed/converging_diverging_channel
   - square_duct (squareDuctAve_Re_2205) -> data/locked/square_duct
@@ -24,7 +24,8 @@ from flowforge.physics.tensors import invariants, is_realizable, normalized_tens
 
 CASE_MAPPING = {
     "periodic_hill_re5600": ("case_1p0", "data/processed/periodic_hill_re5600", "train"),
-    "periodic_hill_re10595": ("case_1p5", "data/processed/periodic_hill_re10595", "train"),
+    # case_1p5 is the alpha=1.5 hill (L=10.93) at Re_h 5600; the dataset has no Re 10595 hill.
+    "periodic_hill_alpha1p5_re5600": ("case_1p5", "data/processed/periodic_hill_alpha1p5_re5600", "train"),
     "curved_step": ("cbfs13700", "data/processed/curved_step", "validation"),
     "converging_diverging_channel": ("convdiv12600", "data/processed/converging_diverging_channel", "validation"),
     "square_duct": ("squareDuctAve_Re_2205", "data/locked/square_duct", "locked"),

@@ -1,8 +1,9 @@
 """Oracle gate (S2): DNS-derived corrections injected through the real
 fixed-field path must move the solution toward DNS.
 
-Sources (never locked data): ``data/processed/periodic_hill_re10595``
-(Re_h ~ 10595 matches the template's Ub=1/h=1/nu=9.44e-5).
+Sources (never locked data): ``data/processed/periodic_hill_re5600``
+(case_1p0, alpha=1, L=9, Re_h=5600 on the crest bulk velocity; the
+template's nu=2.254e-4 matches it under meanVelocityForce Ubar=1).
 
 Geometry: the flat template mesh cannot see separation, so its error
 vs hill DNS is geometry-dominated and no closure can dent it. The gate
@@ -41,11 +42,7 @@ from flowforge.solver.runner import OpenFOAMSolverRunner, default_image
 
 STAGE_ROOT = Path("runs/cache/test-stages")
 TEMPLATE = Path("openfoam/templates/periodicHill")
-# case_1p0 (alpha=1, L=9): the "re10595" store is case_1p5 (alpha=1.5, L=10.93, Re 5600)
 STORE = Path("data/processed/periodic_hill_re5600")
-# Re_h=5600 uses the crest bulk velocity; meanVelocityForce fixes the
-# volume average (=1), and Ub_crest/Ub_vol = 1.262 in the DNS -> nu = 1.262/5600.
-NU_RE5600 = "2.254e-4"
 TOLERANCES = Path("configs/tolerances.yaml")
 
 
@@ -55,20 +52,34 @@ def _image() -> str:
     return os.environ.get("FLOWFORGE_OPENFOAM_IMAGE", default_image())
 
 
-def _docker_ok() -> bool:
+def _docker_state() -> str:
+    """'ok', 'no-cli' (no Docker here, e.g. CI), 'daemon-down' or 'no-image'."""
     try:
         if subprocess.run(["docker", "info"], capture_output=True,
                           timeout=30).returncode != 0:
-            return False
-        return subprocess.run(
-            ["docker", "image", "inspect", _image()],
-            capture_output=True, timeout=30).returncode == 0
-    except Exception:
-        return False
+            return "daemon-down"
+        if subprocess.run(["docker", "image", "inspect", _image()],
+                          capture_output=True, timeout=30).returncode != 0:
+            return "no-image"
+        return "ok"
+    except FileNotFoundError:
+        return "no-cli"
+    except subprocess.TimeoutExpired:
+        return "daemon-down"
 
 
+_DOCKER = _docker_state()
 needs_docker = pytest.mark.skipif(
-    not _docker_ok(), reason="no Docker daemon: oracle gate unverifiable here")
+    _DOCKER in ("no-cli", "no-image"),
+    reason=f"solver gate unverifiable here ({_DOCKER}: no Docker CLI or image not built)")
+
+
+@pytest.fixture(autouse=True)
+def _docker_daemon_must_run() -> None:
+    # Docker installed but stopped is a local setup error, not a reason to
+    # skip: a silent skip exits 0 and reads like a pass.
+    if _DOCKER == "daemon-down":
+        pytest.fail("Docker CLI found but the daemon is not running: start Docker Desktop")
 
 
 def _oracle_ratio() -> float:
@@ -84,9 +95,6 @@ def _stage_hill(path: Path, model: str) -> Path:
     """Stage a hill-mesh case: dataset wall + correctors for skewness."""
     case = path / "case"
     shutil.copytree(TEMPLATE, case)
-    tp = case / "constant" / "transportProperties"
-    tp.write_text(tp.read_text(encoding="utf-8").replace("9.44e-5", NU_RE5600),
-                  encoding="utf-8")
     fv = case / "system" / "fvSolution"
     text = fv.read_text(encoding="utf-8")
     fv.write_text(text.replace("nNonOrthogonalCorrectors 0",
