@@ -22,6 +22,8 @@ SAFE_EPS = 1e-4
 
 INVARIANT_NAMES = ("I1", "I2", "I3", "I4", "I5")
 INVARIANTS = sp.symbols("I1 I2 I3 I4 I5")
+TENSOR_NAMES = ("T1", "T2", "T3", "T4")
+TENSORS = sp.symbols("T1 T2 T3 T4")
 ALLOWED_FUNCTION_NAMES = ("div", "tanh", "exp", "sqrt")
 ALLOWED_FUNCTIONS = (sp.tanh, sp.exp, sp.sqrt, sp.Abs)
 

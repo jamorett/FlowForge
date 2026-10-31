@@ -190,7 +190,8 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
                     session_name: str, resolved_dir: Path,
                     event_logger, events_path: Path,
                     groups: int = 1, group_ids: list | None = None,
-                    mechanisms: list | None = None) -> dict:
+                    mechanisms: list | None = None,
+                    redteam: bool = True) -> dict:
     """Execute a live round with actual LLM calls via the dispatcher.
 
     Each role is dispatched through the prompt loader -> ModelRuntime
@@ -206,7 +207,14 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
     from flowforge.ladder.ladder import apriori_mse, run_ladder
 
     runtime = ModelRuntime(logger=event_logger)
-    from flowforge.data.frozen_fields import load_frozen_fields, train_case_ids
+    from flowforge.data.frozen_fields import (
+        load_frozen_fields,
+        score_expression,
+        score_on_cases,
+        train_case_ids,
+        validation_case_ids,
+        worst_ratio,
+    )
 
     _train_cases = train_case_ids()
     inv, basis, target = load_frozen_fields(_train_cases, max_points_per_case=4000)
@@ -289,6 +297,30 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
         **coder_data,
     })
 
+    # --- Step 3b: Fit numeric constants (deterministic, before ladder) ---
+    from flowforge.dsl.expr_fit import fit_expression
+
+    fits: list[dict] = []
+    fitted_flat: list[str] = []
+    for expr in expressions:
+        fit = fit_expression(expr, inv, basis, target, snap=True)
+        fits.append(json.loads(json.dumps(fit, default=float)))
+        fitted_flat.append(str(fits[-1].get("expression", expr)))
+    idx = 0
+    for gid in group_ids:
+        count = len(group_exprs.get(gid, []))
+        group_exprs[gid] = fitted_flat[idx:idx + count]
+        idx += count
+    expressions = list(fitted_flat)
+
+    event_logger.log({
+        "type": "fit", "step": "fit", "role": "fitter",
+        "round": round_no, "mock": False, "synthetic": False,
+        "source": "frozen-rans", "mode": "frozen", "session": session_name,
+        "prompt_hash": _prompt_hash_for(f"flowforge:round:{round_no}:step:fit"),
+        "fits": json.loads(json.dumps(fits, default=float)),
+    })
+
     # --- Steps 4-7: Rungs (deterministic, same as mock) ---
     def short_eval(expr: str) -> float:
         from flowforge.dsl.evaluate import candidate_anisotropy
@@ -358,25 +390,37 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
     })
 
     # --- Step 10: Red Team ---
-    redteam_context = {
-        "champions": [s.get("expression") for s in final],
-        "attack_suite": lib_context.get("attacks", []),
-    }
-    try:
-        redteam_result = dispatch_role("redteam", runtime, redteam_context)
-        redteam_data = redteam_result.model_dump()
-    except (RoleDispatchError, BudgetExceededError) as exc:
-        logger.warning("RedTeam dispatch failed: %s", exc)
-        redteam_data = {"flows": [{"kind": "fallback"}],
-                         "risk_audit": f"RedTeam fallback: {exc}"}
+    if redteam:
+        redteam_context = {
+            "champions": [s.get("expression") for s in final],
+            "attack_suite": lib_context.get("attacks", []),
+        }
+        try:
+            redteam_result = dispatch_role("redteam", runtime, redteam_context)
+            redteam_data = redteam_result.model_dump()
+        except (RoleDispatchError, BudgetExceededError) as exc:
+            logger.warning("RedTeam dispatch failed: %s", exc)
+            redteam_data = {"flows": [{"kind": "fallback"}],
+                             "risk_audit": f"RedTeam fallback: {exc}"}
 
-    event_logger.log({
-        "type": "redteam", "step": "redteam", "role": "redteam",
-        "round": round_no, "mock": False, "synthetic": False,
-        "source": "live", "mode": "live", "session": session_name,
-        "prompt_hash": _prompt_hash_for(f"flowforge:round:{round_no}:step:redteam"),
-        **redteam_data,
-    })
+        event_logger.log({
+            "type": "redteam", "step": "redteam", "role": "redteam",
+            "round": round_no, "mock": False, "synthetic": False,
+            "source": "live", "mode": "live", "session": session_name,
+            "prompt_hash": _prompt_hash_for(f"flowforge:round:{round_no}:step:redteam"),
+            **redteam_data,
+        })
+    else:
+        redteam_data = {"skipped": True, "flows": [],
+                         "risk_audit": "Red-team disabled (ablation)."}
+        event_logger.log({
+            "type": "redteam", "step": "redteam", "role": "redteam",
+            "round": round_no, "mock": False, "synthetic": False,
+            "source": "live", "mode": "live", "session": session_name,
+            "prompt_hash": _prompt_hash_for(f"flowforge:round:{round_no}:step:redteam"),
+            "skipped": True,
+            **redteam_data,
+        })
 
     # --- Step 11: Composer ---
     composer_context = {
@@ -406,6 +450,17 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
         best = pick_champion(enriched)
         champion = {"expression": best["id"], "dl": best["dl"],
                     "worst_error": best["worst_error"]}
+    if champion is not None:
+        champion_expression = str(champion.get("expression", ""))
+        train_score = score_expression(champion_expression, inv, basis, target)
+        validation_scores = score_on_cases(champion_expression, validation_case_ids())
+        worst_validation = worst_ratio(validation_scores)
+        champion.update({
+            "train": train_score,
+            "validation": validation_scores,
+            "worst_validation_ratio": worst_validation,
+            "validation_mode": "frozen",
+        })
 
     event_logger.log({
         "type": "composer", "step": "composer", "role": "composer",
@@ -441,7 +496,7 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
         "session": session_name,
         "session_dir": str(resolved_dir),
         "events_path": str(events_path),
-        "event_count": len(ROUND_STEPS) + max(0, len(group_ids) - 1),
+        "event_count": len(ROUND_STEPS) + max(0, len(group_ids) - 1) + 1,
         "steps": list(ROUND_STEPS),
         "tokens_used": runtime.tokens,
         "dollars_spent": round(runtime.spent, 4),
@@ -459,13 +514,16 @@ GROUP_MECHANISMS = (
 def run_round(round_no: int, mock: bool = False,
               candidates: tuple[str, ...] = MOCK_CANDIDATES,
               session_dir=None, session: str | None = None,
-              runs_root=None, groups: int = 1, **kwargs) -> dict:
+              runs_root=None, groups: int = 1, redteam: bool = True,
+              **kwargs) -> dict:
     """Run one round. ``groups`` staffs parallel research groups (default 1).
 
     With one group the event chain is exactly the 12 classic steps.
     With N groups, theorist/coder/rung/analyst steps repeat per group
     (tagged ``group: g<i>`` with a mechanism brief) and skeptic/redteam/
     composer/champion merge across groups. ``groups`` must be >= 1.
+    When ``redteam`` is False the red-team role is not dispatched and the
+    redteam event is logged with ``"skipped": True``.
     """
     # Tolerated aliases from callers that name the session differently.
     if session_dir is None:
@@ -521,6 +579,7 @@ def run_round(round_no: int, mock: bool = False,
                 round_no, candidates, session_name,
                 resolved_dir, event_logger, events_path,
                 groups=groups, group_ids=group_ids, mechanisms=mechanisms,
+                redteam=redteam,
             )
         except Exception as exc:
             logger.error("Live round failed: %s", exc)
@@ -657,8 +716,10 @@ def run_round(round_no: int, mock: bool = False,
     _step_event("skeptic", "skeptic", "all", None,
                 {"final_count": len(final),
                  "candidates": [s.get("expression") for s in final]})
-    _step_event("redteam", "redteam", "all", None,
-                {"flows": [], "final_count": len(final)})
+    redteam_details: dict = {"flows": [], "final_count": len(final)}
+    if not redteam:
+        redteam_details["skipped"] = True
+    _step_event("redteam", "redteam", "all", None, redteam_details)
     _step_event("composer", "composer", "all", None,
                 {"champion": champion, "final_count": len(final)})
     _step_event("champion", "champion", "all", None,

@@ -11,7 +11,14 @@ from pathlib import Path
 
 import numpy as np
 
-__all__ = ["load_frozen_fields", "train_case_ids"]
+__all__ = [
+    "load_frozen_fields",
+    "score_expression",
+    "score_on_cases",
+    "train_case_ids",
+    "validation_case_ids",
+    "worst_ratio",
+]
 
 _INVARIANT_KEYS = ("I1", "I2", "I3", "I4", "I5")
 _BASIS_KEYS = ("T1", "T2", "T3", "T4")
@@ -107,3 +114,154 @@ def load_frozen_fields(
     basis = {k: np.concatenate(v, axis=0) for k, v in basis_parts.items()}
     target_all = np.concatenate(target_parts, axis=0)
     return invariants, basis, target_all
+
+
+def validation_case_ids(root=None) -> list[str]:
+    """Return validation-split case ids in ``configs/cases.yaml`` order.
+
+    Args:
+        root: Optional repo root / configs dir / YAML file passed through to
+            :func:`flowforge.config.load_cases`.
+    """
+    from flowforge.config import load_cases
+
+    data = load_cases(root)
+    return [entry["id"] for entry in data["cases"] if entry["split"] == "validation"]
+
+
+def score_expression(
+    expression: str,
+    invariants: dict[str, np.ndarray],
+    basis: dict[str, np.ndarray],
+    target: np.ndarray,
+) -> dict[str, float | int]:
+    """Score ``expression`` a priori against ``target``.
+
+    Rows whose target contains any non-finite value are excluded from both
+    ``mse`` and ``mse_zero``.
+
+    Args:
+        expression: DSL expression for the anisotropy correction.
+        invariants: Mapping ``I1..I5`` to ``(N,)`` arrays.
+        basis: Mapping ``T1..T4`` to ``(N, 3, 3)`` arrays.
+        target: ``(N, 3, 3)`` frozen-RANS anisotropy correction.
+
+    Returns:
+        ``{"mse", "mse_zero", "ratio", "n_used", "n_excluded"}``
+        where ``mse`` is the mean squared error on used rows, ``mse_zero``
+        is the MSE of no correction on used rows (``mean(target**2)``),
+        ``ratio = mse / mse_zero``, ``n_used`` is the number of rows used
+        and ``n_excluded`` is the number of rows excluded for non-finite
+        targets. A non-finite prediction on any used row yields
+        ``mse=inf`` and ``ratio=inf``.
+
+    Raises:
+        ValueError: If no row has a finite target.
+    """
+    from flowforge.dsl.evaluate import candidate_anisotropy
+
+    pred = candidate_anisotropy(expression, invariants, basis)
+    target_arr = np.asarray(target, dtype=float)
+    pred_arr = np.asarray(pred, dtype=float)
+    if target_arr.ndim == 0:
+        raise ValueError("no usable rows: target has no rows")
+    if target_arr.ndim == 1:
+        finite_mask = np.isfinite(target_arr)
+    else:
+        finite_mask = np.isfinite(target_arr).reshape(target_arr.shape[0], -1).all(axis=1)
+    n_used = int(np.count_nonzero(finite_mask))
+    n_excluded = int(target_arr.shape[0] - n_used)
+    if n_used == 0:
+        raise ValueError("no usable rows: all targets are non-finite")
+    target_used = target_arr[finite_mask]
+    pred_used = pred_arr[finite_mask]
+    mse_zero = float(np.mean(target_used**2))
+    if not bool(np.all(np.isfinite(pred_used))):
+        return {
+            "mse": float("inf"),
+            "mse_zero": mse_zero,
+            "ratio": float("inf"),
+            "n_used": n_used,
+            "n_excluded": n_excluded,
+        }
+    mse = float(np.mean((pred_used - target_used) ** 2))
+    if mse_zero == 0.0:
+        ratio = 0.0 if mse == 0.0 else float("inf")
+    else:
+        ratio = float(mse / mse_zero)
+    return {"mse": mse, "mse_zero": mse_zero, "ratio": ratio, "n_used": n_used, "n_excluded": n_excluded}
+
+
+def worst_ratio(scores: dict[str, dict]) -> float | None:
+    """Return the worst (max) validation ``ratio``.
+
+    Args:
+        scores: Mapping ``case_id -> score dict`` as produced by
+            :func:`score_on_cases`.
+
+    Returns:
+        The maximum ``ratio`` over cases without an ``"error"`` key, or
+        ``None`` when no case has a ratio.
+
+    Raises:
+        ValueError: If any non-error ratio is NaN (a NaN score must never
+            be silently skipped).
+    """
+    ratios: list[float] = []
+    for entry in scores.values():
+        if "error" in entry:
+            continue
+        if "ratio" not in entry:
+            continue
+        value = float(entry["ratio"])
+        if np.isnan(value):
+            raise ValueError("NaN ratio must never be skipped")
+        ratios.append(value)
+    if not ratios:
+        return None
+    return max(ratios)
+
+
+def score_on_cases(
+    expression: str,
+    case_ids: list[str] | tuple[str, ...],
+    processed_dir: str | Path = "data/processed",
+    max_points_per_case: int | None = 4000,
+    seed: int = 0,
+) -> dict[str, dict]:
+    """Score ``expression`` separately on each case in ``case_ids``.
+
+    Each case is loaded with :func:`load_frozen_fields` (single-case load)
+    and scored with :func:`score_expression`.
+
+    Args:
+        expression: DSL expression to score.
+        case_ids: Case ids to score, in order.
+        processed_dir: Directory holding one Zarr store per case.
+        max_points_per_case: Deterministic subset size per case.
+        seed: Seed for the deterministic subset.
+
+    Returns:
+        Mapping ``case_id -> {"mse", "mse_zero", "ratio", "n_used",
+        "n_excluded"}``. A case that cannot be loaded
+        (``FileNotFoundError``) or scored (``ValueError``, ``KeyError``)
+        yields ``{"error": "<message>"}`` for that case.
+        ``PermissionError`` (locked data) propagates.
+    """
+    scores: dict[str, dict] = {}
+    for case_id in list(case_ids):
+        try:
+            inv, basis, target = load_frozen_fields(
+                [case_id],
+                processed_dir=processed_dir,
+                max_points_per_case=max_points_per_case,
+                seed=seed,
+            )
+        except FileNotFoundError as exc:
+            scores[case_id] = {"error": str(exc)}
+            continue
+        try:
+            scores[case_id] = score_expression(expression, inv, basis, target)
+        except (ValueError, KeyError) as exc:
+            scores[case_id] = {"error": str(exc)}
+    return scores

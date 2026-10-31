@@ -11,15 +11,23 @@ import numpy as np
 import sympy as sp
 from sympy.printing.cxx import CXX11CodePrinter
 
-from flowforge.dsl.grammar import INVARIANTS
+from flowforge.dsl.grammar import INVARIANTS, TENSORS
 from flowforge.dsl.parser import complexity, validate_candidate
 
 _PRINTER = CXX11CodePrinter()
+_TENSOR_SET = set(TENSORS)
+
+
+def _reject_tensors(expr: sp.Expr, expression: str) -> None:
+    """Reject solver codegen for tensor-basis candidates."""
+    if expr.free_symbols & _TENSOR_SET:
+        raise ValueError(f"Tensor symbols T1..T4 not supported by solver code generation in {expression!r}; use scalar g(I)")
 
 
 def compile_numpy(expression: str):
     """Return f(I1, I2, I3, I4, I5) -> np.ndarray (broadcast, float)."""
     expr = validate_candidate(expression)
+    _reject_tensors(expr, expression)
     fn = sp.lambdify(INVARIANTS, expr, modules="numpy")
 
     def evaluate(*invariant_arrays) -> np.ndarray:
@@ -36,6 +44,7 @@ def compile_numpy(expression: str):
 def compile_cpp(expression: str, out_name: str = "g") -> str:
     """Return a C++ snippet assigning the validated expression to out_name."""
     expr = validate_candidate(expression)
+    _reject_tensors(expr, expression)
     cxx = _PRINTER.doprint(expr, assign_to=out_name)[0]
     lines = [f"// generated from: {expression}", "#pragma once"]
     for sym in INVARIANTS:
@@ -47,6 +56,7 @@ def compile_cpp(expression: str, out_name: str = "g") -> str:
 def compile_candidate(expression: str) -> dict:
     """Compile both backends; returns {expr, complexity, numpy_fn, cpp}."""
     expr = validate_candidate(expression)
+    _reject_tensors(expr, expression)
     return {
         "expr": expr,
         "complexity": complexity(expr),
