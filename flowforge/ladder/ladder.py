@@ -104,17 +104,35 @@ def rung2_short(candidates: list[dict], short_eval: Callable[[str], float] | Non
     return halving(scored)
 
 
-def rung3_full(candidates: list[dict], invariants, basis, target) -> list[dict]:
+def rung3_full(candidates: list[dict], invariants, basis, target, b_rans=None) -> list[dict]:
     """Rung 3 full evaluation + realizability gate. No halving here.
 
     Every survivor is fully scored against the target and must predict a
     realizable anisotropy at every point; non-realizable candidates are
     rejected outright regardless of score.
+
+    Args:
+        candidates: Rung-2 survivors with ``expression`` keys.
+        invariants: Mapping ``I1..I5`` to ``(N,)`` arrays.
+        basis: Mapping ``T1..T4`` to ``(N, 3, 3)`` arrays.
+        target: ``(N, 3, 3)`` correction target.
+        b_rans: Optional ``(N, 3, 3)`` frozen-RANS baseline anisotropy.
+            When given, realizability is checked on the total anisotropy
+            ``b_rans + pred`` at every point where both are finite
+            (non-finite rows are ignored, like the scoring); otherwise
+            the correction ``pred`` alone is checked at every point
+            (legacy behavior).
+
+    Returns:
+        Accepted entries sorted by score. Each entry carries ``score``,
+        ``score_rung3``, ``realizable`` and ``realizable_fraction``
+        (fraction of checked points that pass).
     """
     from flowforge.dsl.evaluate import candidate_anisotropy
     from flowforge.physics.tensors import is_realizable
 
     out: list[dict] = []
+    baseline = None if b_rans is None else np.asarray(b_rans)
     for cand in candidates:
         expr = cand["expression"]
         entry = dict(cand)
@@ -123,12 +141,39 @@ def rung3_full(candidates: list[dict], invariants, basis, target) -> list[dict]:
         except ImportError:
             raise
         except Exception as exc:
-            entry.update({"score": DIVERGED_PENALTY, "realizable": False, "rejected": str(exc)})
+            entry.update({"score": DIVERGED_PENALTY, "realizable": False, "realizable_fraction": 0.0, "rejected": str(exc)})
             continue
-        realizable = bool(np.all(is_realizable(pred)))
+        pred_arr = np.asarray(pred)
+        if baseline is None:
+            flags = is_realizable(pred_arr)
+            n_total = int(flags.size)
+            passed = int(np.count_nonzero(flags))
+            realizable = bool(np.all(flags))
+            fraction = float(passed / n_total) if n_total else 0.0
+        else:
+            total_field = baseline + pred_arr
+            if pred_arr.ndim >= 2:
+                finite_pred = np.isfinite(pred_arr).reshape(pred_arr.shape[0], -1).all(axis=1)
+            else:
+                finite_pred = np.isfinite(pred_arr)
+            if baseline.ndim >= 2:
+                finite_base = np.isfinite(baseline).reshape(baseline.shape[0], -1).all(axis=1)
+            else:
+                finite_base = np.isfinite(baseline)
+            checked = finite_pred & finite_base
+            n_checked = int(np.count_nonzero(checked))
+            if n_checked == 0:
+                realizable = False
+                fraction = 0.0
+            else:
+                flags = is_realizable(total_field[checked])
+                passed = int(np.count_nonzero(flags))
+                realizable = bool(np.all(flags))
+                fraction = float(passed / n_checked)
         entry["score_rung3"] = apriori_mse(pred, target)
         entry["score"] = entry["score_rung3"]
         entry["realizable"] = realizable
+        entry["realizable_fraction"] = fraction
         if realizable:
             out.append(entry)
     out.sort(key=lambda c: c["score"])
@@ -136,8 +181,18 @@ def rung3_full(candidates: list[dict], invariants, basis, target) -> list[dict]:
 
 
 def run_ladder(expressions: list[str], invariants, basis, target,
-               short_eval: Callable[[str], float] | None = None) -> dict:
-    """Full ladder: rung 0 -> 1 (halving) -> 2 (halving) -> 3 (realizability)."""
+               short_eval: Callable[[str], float] | None = None, b_rans=None) -> dict:
+    """Full ladder: rung 0 -> 1 (halving) -> 2 (halving) -> 3 (realizability).
+
+    Args:
+        expressions: Candidate expressions.
+        invariants: Mapping ``I1..I5`` to ``(N,)`` arrays.
+        basis: Mapping ``T1..T4`` to ``(N, 3, 3)`` arrays.
+        target: ``(N, 3, 3)`` correction target.
+        short_eval: Optional rung-2 scorer.
+        b_rans: Optional baseline anisotropy forwarded to rung 3; when
+            given, realizability is checked on the total anisotropy.
+    """
     assert expressions, "run_ladder needs at least one expression"
     passed0 = [e for e in expressions if rung0(e)]
     result: dict = {"rung0_passed": passed0, "rung1": [], "rung2": [], "rung3": []}
@@ -147,5 +202,5 @@ def run_ladder(expressions: list[str], invariants, basis, target,
     if not result["rung1"]:
         return result
     result["rung2"] = rung2_short(result["rung1"], short_eval=short_eval)
-    result["rung3"] = rung3_full(result["rung2"], invariants, basis, target)
+    result["rung3"] = rung3_full(result["rung2"], invariants, basis, target, b_rans=b_rans)
     return result

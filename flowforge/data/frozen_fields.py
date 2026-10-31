@@ -12,6 +12,9 @@ from pathlib import Path
 import numpy as np
 
 __all__ = [
+    "ATTACK_FLOWS",
+    "attack_case_for",
+    "available_attack_flows",
     "load_frozen_fields",
     "score_expression",
     "score_on_cases",
@@ -23,6 +26,115 @@ __all__ = [
 _INVARIANT_KEYS = ("I1", "I2", "I3", "I4", "I5")
 _BASIS_KEYS = ("T1", "T2", "T3", "T4")
 _TARGET_KEY = "targets/a_delta"
+_BDNS_KEY = "anisotropy/b_dns"
+
+ATTACK_FLOWS: list[dict] = [
+    {"kind": "periodic_hill", "alpha": 0.5, "reynolds": 5600, "case_id": "periodic_hill_alpha0p5_re5600"},
+    {"kind": "periodic_hill", "alpha": 0.8, "reynolds": 5600, "case_id": "periodic_hill_alpha0p8_re5600"},
+    {"kind": "periodic_hill", "alpha": 1.2, "reynolds": 5600, "case_id": "periodic_hill_alpha1p2_re5600"},
+]
+
+_ALPHA_TOLERANCE = 0.05
+_REYNOLDS_REL_TOLERANCE = 0.05
+
+
+def _attack_case_ids() -> set[str]:
+    """Return the set of frozen-mode attack case ids."""
+    return {entry["case_id"] for entry in ATTACK_FLOWS}
+
+
+def _ensure_attack_disjoint() -> None:
+    """Guard that attack ids stay disjoint from ``configs/cases.yaml``.
+
+    Raises:
+        ValueError: If any attack id appears in any split.
+    """
+    loader = globals().get("load_cases")
+    if loader is None:
+        from flowforge.config import load_cases as loader
+    data = loader()
+    configured = {entry.get("id") for entry in data.get("cases", []) if isinstance(entry, dict)}
+    overlap = _attack_case_ids() & configured
+    if overlap:
+        raise ValueError(
+            "attack flows must stay disjoint from train/validation/locked: "
+            f"overlap {sorted(overlap)}"
+        )
+
+
+def _matches_attack_entry(alpha: float, reynolds: float, entry: dict) -> bool:
+    """Return True when ``alpha``/``reynolds`` match an attack entry.
+
+    Args:
+        alpha: Requested hill steepness.
+        reynolds: Requested Reynolds number.
+        entry: One of :data:`ATTACK_FLOWS`.
+    """
+    alpha_ok = abs(alpha - float(entry["alpha"])) <= _ALPHA_TOLERANCE + 1e-9
+    ref = float(entry["reynolds"])
+    reynolds_ok = abs(reynolds - ref) / ref <= _REYNOLDS_REL_TOLERANCE + 1e-12
+    return bool(alpha_ok and reynolds_ok)
+
+
+def attack_case_for(flow: dict, processed_dir: str | Path = "data/processed") -> str | None:
+    """Map a red-team flow spec to its attack store when available.
+
+    Args:
+        flow: Mapping with ``kind``/``alpha``/``reynolds`` keys.
+        processed_dir: Directory holding one Zarr store per case.
+
+    Returns:
+        The matching attack ``case_id`` when kind is ``periodic_hill``
+        (case-insensitive), ``alpha`` is within 0.05 and ``reynolds`` is
+        within 5% of an :data:`ATTACK_FLOWS` entry and its store exists;
+        otherwise ``None``. Missing or non-numeric fields yield ``None``
+        and never raise.
+
+    Raises:
+        ValueError: If any attack id appears in ``configs/cases.yaml``.
+    """
+    _ensure_attack_disjoint()
+    if not isinstance(flow, dict):
+        return None
+    kind = flow.get("kind")
+    if not isinstance(kind, str) or kind.lower() != "periodic_hill":
+        return None
+    try:
+        alpha = float(flow.get("alpha"))
+        reynolds = float(flow.get("reynolds"))
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if not bool(np.isfinite(alpha)) or not bool(np.isfinite(reynolds)):
+        return None
+    base = Path(processed_dir)
+    for entry in ATTACK_FLOWS:
+        if _matches_attack_entry(alpha, reynolds, entry):
+            store = base / entry["case_id"]
+            if store.exists():
+                return str(entry["case_id"])
+            return None
+    return None
+
+
+def available_attack_flows(processed_dir: str | Path = "data/processed") -> list[dict]:
+    """List attack flows whose store exists under ``processed_dir``.
+
+    Args:
+        processed_dir: Directory holding one Zarr store per case.
+
+    Returns:
+        Copies of the :data:`ATTACK_FLOWS` entries whose store exists.
+
+    Raises:
+        ValueError: If any attack id appears in ``configs/cases.yaml``.
+    """
+    _ensure_attack_disjoint()
+    base = Path(processed_dir)
+    found: list[dict] = []
+    for entry in ATTACK_FLOWS:
+        if (base / entry["case_id"]).exists():
+            found.append(dict(entry))
+    return found
 
 
 def train_case_ids(root=None) -> list[str]:
@@ -43,7 +155,8 @@ def load_frozen_fields(
     processed_dir: str | Path = "data/processed",
     max_points_per_case: int | None = None,
     seed: int = 0,
-) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray], np.ndarray]:
+    return_b_rans: bool = False,
+) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray], np.ndarray] | tuple[dict[str, np.ndarray], dict[str, np.ndarray], np.ndarray, np.ndarray]:
     """Load and concatenate frozen-RANS fields for ``case_ids`` in order.
 
     Args:
@@ -56,11 +169,17 @@ def load_frozen_fields(
             for every array of that case; ``numpy.random.default_rng(seed)``;
             subset sorted by original index). Cases with fewer points keep all.
         seed: Seed for the deterministic subset.
+        return_b_rans: When True, also return the frozen-RANS baseline
+            anisotropy ``b_rans = anisotropy/b_dns - targets/a_delta``
+            using the same rows as the other arrays.
 
     Returns:
         ``(invariants, basis, target)`` where ``invariants`` maps ``I1..I5``
         to ``(N,)`` arrays, ``basis`` maps ``T1..T4`` to ``(N, 3, 3)`` arrays
         and ``target`` is the ``(N, 3, 3)`` ``targets/a_delta`` array.
+        When ``return_b_rans`` is True, returns
+        ``(invariants, basis, target, b_rans)`` with ``b_rans`` the
+        ``(N, 3, 3)`` baseline anisotropy.
 
     Raises:
         ValueError: If ``case_ids`` is empty or ``max_points_per_case`` is
@@ -92,6 +211,7 @@ def load_frozen_fields(
     inv_parts: dict[str, list[np.ndarray]] = {k: [] for k in _INVARIANT_KEYS}
     basis_parts: dict[str, list[np.ndarray]] = {k: [] for k in _BASIS_KEYS}
     target_parts: list[np.ndarray] = []
+    brans_parts: list[np.ndarray] = []
     for cid, store_path in zip(ids, store_paths):
         if not store_path.exists():
             raise FileNotFoundError(f"frozen store missing for case {cid!r}: {store_path}")
@@ -109,10 +229,17 @@ def load_frozen_fields(
             arr = np.asarray(flat[f"tensor_basis/{key}"])
             basis_parts[key].append(arr[idx] if idx is not None else arr)
         target_parts.append(target[idx] if idx is not None else target)
+        if return_b_rans:
+            bdns = np.asarray(flat[_BDNS_KEY])
+            brans = bdns - target
+            brans_parts.append(brans[idx] if idx is not None else brans)
 
     invariants = {k: np.concatenate(v, axis=0) for k, v in inv_parts.items()}
     basis = {k: np.concatenate(v, axis=0) for k, v in basis_parts.items()}
     target_all = np.concatenate(target_parts, axis=0)
+    if return_b_rans:
+        brans_all = np.concatenate(brans_parts, axis=0)
+        return invariants, basis, target_all, brans_all
     return invariants, basis, target_all
 
 

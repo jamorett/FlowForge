@@ -31,6 +31,12 @@ CASE_MAPPING = {
     "square_duct": ("squareDuctAve_Re_2205", "data/locked/square_duct", "locked"),
 }
 
+ATTACK_CASE_MAPPING = {
+    "periodic_hill_alpha0p5_re5600": "case_0p5",
+    "periodic_hill_alpha0p8_re5600": "case_0p8",
+    "periodic_hill_alpha1p2_re5600": "case_1p2",
+}
+
 
 def load_raw_case_tables(raw_dir: Path, raw_case_id: str) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Load matching rows for raw_case_id from komegasst.csv and REF.csv."""
@@ -146,11 +152,48 @@ def ingest_all_canonical_cases(raw_dir: Path = Path("data/raw")) -> dict[str, Pa
     return out_paths
 
 
+def ingest_attack_cases(
+    raw_dir: Path = Path("data/raw"),
+    processed_dir: Path = Path("data/processed"),
+) -> dict[str, Path]:
+    """Ingest frozen-mode attack cases (never used to fit anything).
+
+    Uses exactly the same per-case pipeline (arrays and targets) as the
+    canonical cases.
+
+    Args:
+        raw_dir: Directory holding ``komegasst.csv`` and ``REF.csv``.
+        processed_dir: Directory holding one Zarr store per case.
+
+    Returns:
+        Mapping ``attack case id -> store path``.
+    """
+    out_paths: dict[str, Path] = {}
+    for case_id, raw_case in ATTACK_CASE_MAPPING.items():
+        print(f"Ingesting {case_id} (source: {raw_case})...")
+        df_k, df_r = load_raw_case_tables(raw_dir, raw_case)
+        arrays = extract_case_arrays(df_k, df_r)
+        target_path = Path(processed_dir) / case_id
+        guard_swarm_path(target_path, role="evaluator")  # ingestion runs as evaluator
+        store = write_case(target_path, arrays)
+        out_paths[case_id] = store
+        print(f"  -> Successfully stored {len(df_k)} points in {store}")
+    return out_paths
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Ingest raw CSV cases into Zarr")
     parser.add_argument("--raw-dir", default="data/raw", type=str)
+    parser.add_argument(
+        "--attack-cases",
+        action="store_true",
+        help="Ingest only the frozen-mode attack cases",
+    )
     args = parser.parse_args()
-    ingest_all_canonical_cases(Path(args.raw_dir))
+    if args.attack_cases:
+        ingest_attack_cases(Path(args.raw_dir))
+    else:
+        ingest_all_canonical_cases(Path(args.raw_dir))
 
 
 if __name__ == "__main__":

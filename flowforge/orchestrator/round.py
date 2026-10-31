@@ -23,6 +23,7 @@ response-bearing events and with replay lookups.
 from __future__ import annotations
 
 import argparse
+import datetime
 import hashlib
 import json
 import logging
@@ -31,6 +32,8 @@ from pathlib import Path
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
+ATTACKS_DIR = Path("library/attacks")
 
 MOCK_CANDIDATES = ("0", "I1", "tanh(I1)", "I1 + I2")
 
@@ -186,6 +189,30 @@ def _build_library_context() -> dict:
     return context
 
 
+def _frozen_attack_stem(case_id: str, expression: str) -> str:
+    """Return the stable attack file stem for a break."""
+    digest = hashlib.sha256(f"{case_id}|{expression}".encode()).hexdigest()[:10]
+    return f"attack_{digest}"
+
+
+def _save_frozen_break(case_id: str, expression: str, ratio: float, flow: dict | None) -> None:
+    """Persist one frozen-mode break under ATTACKS_DIR (append-only)."""
+    stem = _frozen_attack_stem(case_id, expression)
+    path = ATTACKS_DIR / f"{stem}.json"
+    if path.exists():
+        return
+    alpha = flow.get("alpha") if isinstance(flow, dict) else None
+    reynolds = flow.get("reynolds") if isinstance(flow, dict) else None
+    payload = {"id": stem, "name": f"Frozen attack {case_id} breaks {expression}", "role": "redteam", "base_case": case_id, "parameter_sweeps": {"slope_steepness_alpha": alpha, "reynolds_number": reynolds}, "broken_expression": expression, "ratio": float(ratio), "mode": "frozen", "status": "active", "created_at": datetime.datetime.now(datetime.UTC).isoformat().replace("+00:00", "Z")}
+    try:
+        ATTACKS_DIR.mkdir(parents=True, exist_ok=True)
+        if path.exists():
+            return
+        path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    except OSError as exc:
+        logger.warning("persist frozen attack failed: %s", exc)
+
+
 def _run_round_live(round_no: int, candidates: tuple[str, ...],
                     session_name: str, resolved_dir: Path,
                     event_logger, events_path: Path,
@@ -208,6 +235,8 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
 
     runtime = ModelRuntime(logger=event_logger)
     from flowforge.data.frozen_fields import (
+        attack_case_for,
+        available_attack_flows,
         load_frozen_fields,
         score_expression,
         score_on_cases,
@@ -217,7 +246,19 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
     )
 
     _train_cases = train_case_ids()
-    inv, basis, target = load_frozen_fields(_train_cases, max_points_per_case=4000)
+    try:
+        loaded = load_frozen_fields(_train_cases, max_points_per_case=4000, return_b_rans=True)
+    except TypeError as exc:
+        if "return_b_rans" not in str(exc):
+            raise
+        inv, basis, target = load_frozen_fields(_train_cases, max_points_per_case=4000)
+        b_rans = None
+    else:
+        if isinstance(loaded, tuple) and len(loaded) == 4:
+            inv, basis, target, b_rans = loaded
+        else:
+            inv, basis, target = loaded
+            b_rans = None
 
     # --- Step 1: Board ---
     lib_context = _build_library_context()
@@ -329,7 +370,12 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
         sub_basis = {name: arr[:k] for name, arr in basis.items()}
         return apriori_mse(candidate_anisotropy(expr, sub_inv, sub_basis), target[:k])
 
-    ladder = run_ladder(expressions, inv, basis, target, short_eval=short_eval)
+    try:
+        ladder = run_ladder(expressions, inv, basis, target, short_eval=short_eval, b_rans=b_rans)
+    except TypeError as exc:
+        if "b_rans" not in str(exc):
+            raise
+        ladder = run_ladder(expressions, inv, basis, target, short_eval=short_eval)
     survivors = ladder["rung1"]
     final = ladder["rung3"]
 
@@ -389,11 +435,17 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
         **skeptic_data,
     })
 
-    # --- Step 10: Red Team ---
+    # --- Step 10: Red Team (frozen mode) ---
+    attack_cases: list[str] = []
+    redteam_breaks: list[dict] = []
+    broken_exprs: set[str] = set()
+    case_flow: dict[str, dict] = {}
+    all_broken = False
     if redteam:
         redteam_context = {
             "champions": [s.get("expression") for s in final],
             "attack_suite": lib_context.get("attacks", []),
+            "available_frozen_flows": available_attack_flows(),
         }
         try:
             redteam_result = dispatch_role("redteam", runtime, redteam_context)
@@ -402,13 +454,50 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
             logger.warning("RedTeam dispatch failed: %s", exc)
             redteam_data = {"flows": [{"kind": "fallback"}],
                              "risk_audit": f"RedTeam fallback: {exc}"}
-
+        flows = redteam_data.get("flows", [])
+        if not isinstance(flows, list):
+            flows = []
+        attacks: list[dict] = []
+        seen: set[str] = set()
+        for spec in flows:
+            cid = attack_case_for(spec) if isinstance(spec, dict) else None
+            ok = cid is not None
+            attacks.append({"flow": spec, "case_id": cid, "available": ok})
+            if ok and cid not in seen:
+                seen.add(cid)
+                attack_cases.append(cid)
+                if isinstance(spec, dict):
+                    case_flow[cid] = spec
+        for cid in attack_cases:
+            for item in final:
+                expr = item.get("expression", "")
+                if not expr:
+                    continue
+                scores = score_on_cases(expr, [cid], max_points_per_case=4000)
+                payload = scores.get(cid, {})
+                if "error" in payload:
+                    logger.warning("frozen attack error %s on %s: %s", expr, cid, payload.get("error"))
+                    continue
+                try:
+                    ratio = float(payload.get("ratio"))
+                except (TypeError, ValueError):
+                    logger.warning("frozen attack bad ratio %s on %s", expr, cid)
+                    continue
+                if ratio > 1.0:
+                    redteam_breaks.append({"expression": expr, "case_id": cid, "ratio": ratio})
+        broken_exprs = {b["expression"] for b in redteam_breaks}
+        for b in redteam_breaks:
+            _save_frozen_break(b["case_id"], b["expression"], b["ratio"], case_flow.get(b["case_id"]))
         event_logger.log({
             "type": "redteam", "step": "redteam", "role": "redteam",
             "round": round_no, "mock": False, "synthetic": False,
-            "source": "live", "mode": "live", "session": session_name,
+            "source": "live", "session": session_name,
             "prompt_hash": _prompt_hash_for(f"flowforge:round:{round_no}:step:redteam"),
             **redteam_data,
+            "mode": "frozen",
+            "attacks": attacks,
+            "breaks": redteam_breaks,
+            "n_broken": len(redteam_breaks),
         })
     else:
         redteam_data = {"skipped": True, "flows": [],
@@ -439,6 +528,12 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
     # --- Champion selection ---
     champion = None
     champion_pool = final if final else []
+    if redteam and broken_exprs and champion_pool:
+        kept = [s for s in champion_pool if s.get("expression") not in broken_exprs]
+        if kept:
+            champion_pool = kept
+        else:
+            all_broken = True
     if champion_pool:
         enriched = []
         for s in champion_pool:
@@ -461,6 +556,22 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
             "worst_validation_ratio": worst_validation,
             "validation_mode": "frozen",
         })
+        if redteam:
+            ratios: dict[str, float] = {}
+            for cid in attack_cases:
+                sc = score_on_cases(champion_expression, [cid], max_points_per_case=4000)
+                pl = sc.get(cid, {})
+                if "error" in pl:
+                    logger.warning("frozen champion error %s on %s: %s", champion_expression, cid, pl.get("error"))
+                    continue
+                try:
+                    ratios[cid] = float(pl.get("ratio"))
+                except (TypeError, ValueError):
+                    logger.warning("frozen champion bad ratio %s on %s", champion_expression, cid)
+                    continue
+            champion["attack_ratios"] = ratios
+            if all_broken:
+                champion["all_broken"] = True
 
     event_logger.log({
         "type": "composer", "step": "composer", "role": "composer",
