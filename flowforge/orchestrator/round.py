@@ -233,6 +233,9 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
     from flowforge.elegance.engine import description_length, pick_champion
     from flowforge.ladder.ladder import apriori_mse, run_ladder
 
+    from flowforge.orchestrator.history import session_history
+
+    previous_results = session_history(events_path)
     runtime = ModelRuntime(logger=event_logger)
     from flowforge.data.frozen_fields import (
         attack_case_for,
@@ -290,13 +293,24 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
     # --- Step 2: Theorist(s), one per group ---
     group_ids = group_ids or ["g0"]
     mechanisms = mechanisms or [""]
+    from flowforge.literature.library_cards import load_literature_cards
+
+    raw_cards = load_literature_cards()
+    literature_cards = [
+        {"id": card.get("id"), "reference": card.get("reference"),
+         "dsl_expression": card.get("dsl_expression"),
+         "mechanism": card.get("mechanism")}
+        for card in raw_cards if isinstance(card, dict)
+    ]
     group_exprs: dict[str, list[str]] = {}
     for gid, mech in zip(group_ids, mechanisms):
         theorist_context = {
             "mechanisms": ([mech] if mech else [])
             + list(board_data.get("mechanisms", [])),
             "closure_cards": lib_context.get("modules", []),
+            "literature_cards": literature_cards,
             "group_history": lib_context.get("findings", []),
+            "previous_results": previous_results,
         }
         try:
             theorist_result = dispatch_role("theorist", runtime, theorist_context)
