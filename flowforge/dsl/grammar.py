@@ -24,6 +24,9 @@ INVARIANT_NAMES = ("I1", "I2", "I3", "I4", "I5")
 INVARIANTS = sp.symbols("I1 I2 I3 I4 I5")
 TENSOR_NAMES = ("T1", "T2", "T3", "T4")
 TENSORS = sp.symbols("T1 T2 T3 T4")
+# T4 stays in the symbol table (basis stores still carry it) but the parser
+# rejects it: on 2-D train data T4 lies in span(T1..T3) to ~1e-9, so it is a
+# pure overfitting door. Revisit if 3-D cases ever enter training.
 ALLOWED_FUNCTION_NAMES = ("div", "tanh", "exp", "sqrt")
 ALLOWED_FUNCTIONS = (sp.tanh, sp.exp, sp.sqrt, sp.Abs)
 

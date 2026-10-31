@@ -213,6 +213,43 @@ def _save_frozen_break(case_id: str, expression: str, ratio: float, flow: dict |
         logger.warning("persist frozen attack failed: %s", exc)
 
 
+def select_champion_by_validation(finalists: list[dict]) -> dict | None:
+    """Pick the round champion by worst-case *validation* ratio (frozen).
+
+    Each finalist is scored on the validation cases; the worst (max) ratio
+    is its error, and :func:`pick_champion` applies the 3% elegance margin
+    with description-length tie-break. Finalists whose validation cannot be
+    scored get ``inf`` so they lose to any scored finalist. Returns
+    ``{"expression", "dl", "worst_error", "selection_metric"}`` or ``None``
+    when the pool is empty. Mock mode keeps its own train-based selection.
+    """
+    from flowforge.data.frozen_fields import score_on_cases, validation_case_ids, worst_ratio
+    from flowforge.dsl.parser import complexity, validate_candidate
+    from flowforge.elegance.engine import description_length, pick_champion
+
+    if not finalists:
+        return None
+    enriched: list[dict] = []
+    for item in finalists:
+        expression = str(item.get("expression", ""))
+        validate_candidate(expression)
+        try:
+            vscores = score_on_cases(expression, validation_case_ids())
+            vratio = worst_ratio(vscores)
+        except (ValueError, KeyError, AssertionError) as exc:
+            logger.warning("champion validation scoring failed for %s: %s", expression, exc)
+            vratio = None
+        enriched.append({
+            "id": expression,
+            "worst_error": float(vratio) if vratio is not None else float("inf"),
+            "dl": description_length(complexity(validate_candidate(expression)), []),
+        })
+    best = pick_champion(enriched)
+    return {"expression": best["id"], "dl": best["dl"],
+            "worst_error": best["worst_error"],
+            "selection_metric": "worst_validation_ratio"}
+
+
 def _run_round_live(round_no: int, candidates: tuple[str, ...],
                     session_name: str, resolved_dir: Path,
                     event_logger, events_path: Path,
@@ -229,8 +266,6 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
     """
     from flowforge.agents.dispatcher import dispatch_role, RoleDispatchError
     from flowforge.agents.runtime.client import ModelRuntime, BudgetExceededError
-    from flowforge.dsl.parser import complexity, validate_candidate
-    from flowforge.elegance.engine import description_length, pick_champion
     from flowforge.ladder.ladder import apriori_mse, run_ladder
 
     from flowforge.orchestrator.history import session_history
@@ -549,16 +584,9 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
         else:
             all_broken = True
     if champion_pool:
-        enriched = []
-        for s in champion_pool:
-            expr = validate_candidate(s["expression"])
-            enriched.append({
-                "id": s["expression"], "worst_error": s["score"],
-                "dl": description_length(complexity(expr), []),
-            })
-        best = pick_champion(enriched)
-        champion = {"expression": best["id"], "dl": best["dl"],
-                    "worst_error": best["worst_error"]}
+        # Champion by worst-case VALIDATION ratio (frozen), not train error:
+        # the train-best finalist is often the validation-worst (pilot RP1).
+        champion = select_champion_by_validation(champion_pool)
     if champion is not None:
         champion_expression = str(champion.get("expression", ""))
         train_score = score_expression(champion_expression, inv, basis, target)

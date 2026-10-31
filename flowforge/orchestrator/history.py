@@ -13,7 +13,7 @@ import math
 from pathlib import Path
 from typing import Any
 
-TENSORS = ("T1", "T2", "T3", "T4")
+TENSORS = ("T1", "T2", "T3")
 
 
 def empty_history() -> dict:
@@ -41,7 +41,7 @@ def parse_float(value: Any) -> float | None:
 
 
 def tensors_in(expression: str) -> list[str]:
-    """Return the T1..T4 symbols appearing as substrings."""
+    """Return the T1..T3 symbols appearing as substrings."""
     found: list[str] = []
     text = str(expression)
     for name in TENSORS:

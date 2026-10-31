@@ -34,6 +34,18 @@ def test_unknown_symbol_and_function_rejected() -> None:
         parse_expression("sin(I1)")
 
 
+def test_t4_rejected_as_redundant_in_2d() -> None:
+    # T4 lies in span(T1..T3) to ~1e-9 on 2-D train data: pure overfit door.
+    with pytest.raises(ValueError, match="T4"):
+        validate_candidate("0.1 * T4")
+    with pytest.raises(ValueError, match="T4"):
+        validate_candidate("0.05 * I1 * T4 + 0.02 * T2")
+    with pytest.raises(ValueError, match="T4"):
+        parse_expression("T4")
+    # T1..T3 still legal.
+    validate_candidate("0.1 * T1 + 0.05 * I1 * T2 + 0.02 * I2 * T3")
+
+
 def test_complexity_cap_and_safe_ops() -> None:
     with pytest.raises(ValueError):
         validate_candidate(" + ".join(["I1"] * 30))

@@ -29,7 +29,12 @@ def _safe_div(a, b):
 def _validate_tree(expr: sp.Expr, text: str) -> None:
     unknown = expr.free_symbols - _INVARIANT_SET - _TENSOR_SET
     if unknown:
-        raise ValueError(f"Unknown symbols {sorted(map(str, unknown))} in {text!r}; only I1..I5, T1..T4 allowed")
+        raise ValueError(f"Unknown symbols {sorted(map(str, unknown))} in {text!r}; only I1..I5, T1..T3 allowed")
+    if TENSORS[3] in expr.free_symbols:
+        raise ValueError(
+            f"T4 is rejected: redundant in 2-D flows (in the span of T1..T3 "
+            f"to 1e-9 on train data); use T1..T3 in {text!r}"
+        )
     for node in sp.preorder_traversal(expr):
         if isinstance(node, sp.Function):
             if node.free_symbols & _TENSOR_SET:
@@ -90,7 +95,7 @@ def validate_candidate(text: str) -> sp.Expr:
     return expr
 
 def tensor_coefficients(text: str) -> dict[str, sp.Expr]:
-    """Effective g_k(I) for T1..T4; T-free part folded into T1.
+    """Effective g_k(I) for T1..T3 (T4 is rejected); T-free part folded into T1.
 
     Validated with :func:`validate_candidate`, so grammar violations
     and the 25-node complexity cap raise ``ValueError``.
