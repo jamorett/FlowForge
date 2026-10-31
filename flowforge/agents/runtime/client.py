@@ -24,7 +24,10 @@ BASE_URL = "https://api.meta.ai/v1"
 # muse-wonder) bill every token at the highest known output rate, so the
 # meter over- rather than under-estimates.
 PRICE_PER_M = {"muse-spark-1.1": (1.25, 4.25), "muse-spark-1.2": (1.25, 4.25),
-               "muse-spark-1.3": (1.25, 4.25)}
+               "muse-spark-1.3": (1.25, 4.25),
+               # Contributor-tier price unconfirmed: bill at standard rates
+               # so the meter over-estimates until the discount is known.
+               "muse-spark-1.3-contributor": (1.25, 4.25)}
 FALLBACK_PRICE_PER_M = (max(p[1] for p in PRICE_PER_M.values()),) * 2
 
 T = TypeVar("T", bound=BaseModel)

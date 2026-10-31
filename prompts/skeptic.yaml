@@ -1,6 +1,6 @@
 role: skeptic
 version: 2
-model: muse-spark-1.3
+model: muse-spark-1.3-contributor
 schema: SkepticCritique
 risk_audit: required
 prompt: |

@@ -1,6 +1,6 @@
 role: composer
 version: 3
-model: muse-spark-1.3
+model: muse-spark-1.3-contributor
 schema: CompositionPlan
 risk_audit: required
 prompt: |
