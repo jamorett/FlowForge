@@ -1,6 +1,6 @@
 """SAM 3.1 error-region segmentation client (S6).
 
-Spec (v2 Build spec.md): PyVista renders plus SAM 3.1 segment error regions
+Spec (docs/build-spec.md): PyVista renders plus SAM 3.1 segment error regions
 (bubble, reattachment, shear layer) and pixel masks map back to mesh cells;
 vision goes through the Meta Model API (confirm the endpoint at kickoff).
 

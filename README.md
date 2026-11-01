@@ -7,7 +7,7 @@ Docker, and SAM 3.1 segments the error maps so you can see *where* each
 candidate fails. Everything streams to a React cockpit: groups interacting,
 equations proposed, red-team challenges, and evaluations as they happen.
 
-Methodology follows [v2 Build spec.md](v2%20Build%20spec.md); work sequencing
+Methodology follows [docs/build-spec.md](docs/build-spec.md); work sequencing
 follows [docs/plans/2026-10-26-flowforge-v2-implementation-plan.md](docs/plans/2026-10-26-flowforge-v2-implementation-plan.md).
 Tolerances are frozen in `configs/tolerances.yaml` — never loosened to make a
 check pass.
@@ -37,11 +37,37 @@ check pass.
   Candidate Inspector shows live candidates with a `LIVE`/`OFFLINE SAMPLES`
   badge.
 
+## Repository layout
+
+```text
+flowforge/      Python package (agents, dsl, physics, data, solver, ladder, redteam,
+                elegance, composer, baselines, orchestrator, literature, render, api)
+openfoam/       correctedKOmegaSST C++ class, case templates, hill meshing
+configs/        budgets, case splits, frozen tolerances, experiment arms
+prompts/        versioned role prompts (hash logged on every call)
+library/        cross-session memory: modules, attacks, rejected, findings,
+                curriculum, literature (curated closure cards)
+scripts/        entry points: download_data, run_experiment, run_arms,
+                evaluate_locked, reproduce_champion, export_demo
+tests/          unit/ (fast, CI), agents/, science/, integration/ (Docker solver gates)
+ui/             React + Plotly cockpit (Vite)
+docker/         pinned OpenFOAM image + compose
+docs/           build-spec.md (methodology authority), plans/ (sequencing authority),
+                history/ (frozen snapshots: Oct 27 audit, Oct 28 status; not current)
+notebooks/      analysis and figures
+data/  runs/  scratch/   git-ignored: datasets + locked vault, session outputs, probes
+```
+
+Run every command from the repo root: `configs/` and `prompts/` are found from
+the package location, but `runs/`, `data/` and `library/` resolve relative to the
+working directory.
+
 ## Status (2026-10-29, verified this session)
 
 Green:
 
-- Unit suite green (190+ tests), UI `tsc --noEmit` clean.
+- Offline suite green: 288 passed (unit + agents + science, 2026-10-31);
+  UI `tsc --noEmit` clean (last checked 2026-10-29).
 - Baseline SST converges in the container (`converged=True`, ~837 steps on
   the hill mesh with non-orthogonal correctors).
 - Solver gates green: **identity** (zero correction == baseline SST,
@@ -58,8 +84,14 @@ Open:
   (the old "Re 10595" store was case_1p5, the alpha=1.5 hill at Re 5600)
   and nu (Re_h on the crest bulk velocity -> 2.254e-4). First pass now
   0.855 (was 0.967); the 3-pass recalibration loop diverges (1.24, 1.43).
-  Even live injection of the exact DNS stress gives ~1.15, so the
-  remaining gap is case/DNS equivalence (mesh, wall treatment, mapping).
+  Diagnosis (2026-10-31, scratch probes, not results): on the dataset's
+  own 99x149 mesh with low-Re walls, our baseline matches the dataset SST
+  to 0.0057 (case equivalence solved), yet b-space injection still gives
+  1.05. SST's anisotropy shape is already close to DNS; its k is 2-4x too
+  low in the shear layer, and `tauDelta = 2*k_solver*aDelta` cannot carry
+  that magnitude (stress-referenced injection feeds back through k and
+  diverges, 5.3). Next step needs C++: PkDelta as a `kSource()` term
+  (currently read but unused) or a fixed, k-independent stress field.
   No tolerance was touched. Per the build spec, frozen-RANS a-priori
   scoring carries the candidate ranking.
 

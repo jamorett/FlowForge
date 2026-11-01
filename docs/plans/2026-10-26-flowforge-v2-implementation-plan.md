@@ -1,6 +1,6 @@
 # FlowForge v2 — Improved Implementation Plan
 
-Ground truth: [v2 Build spec.md](../../v2%20Build%20spec.md). This plan keeps the spec's research questions (RP1–RP6), elegance rule, and methodology. It only tightens sequencing, fallback triggers, and verification.
+Ground truth: [v2 Build spec.md](../build-spec.md). This plan keeps the spec's research questions (RP1–RP6), elegance rule, and methodology. It only tightens sequencing, fallback triggers, and verification.
 
 > **Operational Directive for Non-Expert / Constrained Models (Muse Spark, Wonder):**
 > Constrained agents behave like junior engineers: they cannot make unguided assumptions about APIs, tensor math, or schemas without risking hallucinations. Every task below provides **concrete code contracts, exact mathematical formulas, pinned library versions, typed Pydantic schemas, shell commands, explicit pass/fail tolerances, enforceable step-by-step guardrails, and a self-directed probing protocol**.
@@ -208,7 +208,7 @@ python/uv/docker versions, `simpleFoam` smoke. Proves environment before code de
       full_run_timeout_seconds: 300
     ```
   - `configs/cases.yaml`: Register 6 cases with split assignments:
-    - Train: `periodic_hill_re5600`, `periodic_hill_re10595`
+    - Train: `periodic_hill_re5600`, `periodic_hill_alpha1p5_re5600` (case_1p5; the dataset has no Re 10595 hill)
     - Validation: `curved_step`, `converging_diverging_channel`
     - Locked: `square_duct`, `nasa_wall_mounted_hump`
 
