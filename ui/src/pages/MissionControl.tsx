@@ -5,18 +5,18 @@ import { EventFeed } from "../components/EventFeed";
 import { StatusBadge } from "../components/StatusBadge";
 
 const ROLES = [
-  { name: "Board", model: "muse-spark-1.3", role: "Directs round planning, group staffing & budgets", status: "active" },
-  { name: "Theorist", model: "muse-spark-1.3", role: "Proposes closure tensor expressions (complexity <= 25)", status: "active" },
+  { name: "Board", model: "muse-spark-1.3-contributor", role: "Directs round planning, group staffing & budgets", status: "active" },
+  { name: "Theorist", model: "muse-spark-1.3-contributor", role: "Proposes closure tensor expressions (complexity <= 25)", status: "active" },
   { name: "Coder", model: "muse-spark-1.3-contributor", role: "Fits constants via elastic net & snaps within 1%", status: "active" },
-  { name: "Analyst", model: "muse-spark-1.3", role: "Diagnoses regional error maps & recirculation zones", status: "idle" },
-  { name: "Skeptic", model: "muse-spark-1.3", role: "Attacks correctness & elegance from separate context", status: "idle" },
-  { name: "Red Team", model: "muse-spark-1.3", role: "Deforms flow geometries to break champions", status: "active" },
-  { name: "Composer", model: "muse-spark-1.3", role: "Composes surviving modules with sigmoid gates (+16 bits)", status: "idle" },
+  { name: "Analyst", model: "muse-spark-1.3-contributor", role: "Diagnoses regional error maps & recirculation zones", status: "idle" },
+  { name: "Skeptic", model: "muse-spark-1.3-contributor", role: "Attacks correctness & elegance from separate context", status: "idle" },
+  { name: "Red Team", model: "muse-spark-1.3-contributor", role: "Deforms flow geometries to break champions", status: "active" },
+  { name: "Composer", model: "muse-spark-1.3-contributor", role: "Composes surviving modules with sigmoid gates (+16 bits)", status: "idle" },
 ];
 
-export function MissionControl() {
-  const q = useQuery({ queryKey: ["session"], queryFn: () => fetchSessionState() });
-  const [session, setSession] = useState("round-1");
+export function MissionControl({ session: propSession = "default" }: { session?: string }) {
+  const q = useQuery({ queryKey: ["session", propSession], queryFn: () => fetchSessionState(propSession) });
+  const [session, setSession] = useState(propSession === "default" ? "round-1" : propSession);
   const [live, setLive] = useState(false);
   const [starting, setStarting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -151,7 +151,7 @@ export function MissionControl() {
 
         {/* Live Stream Event Feed */}
         <div className="lg:col-span-2">
-          <EventFeed />
+          <EventFeed session={propSession} />
         </div>
       </div>
     </section>
