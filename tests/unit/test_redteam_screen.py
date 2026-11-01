@@ -41,8 +41,11 @@ def _fake_dispatch_factory(theorist_exprs):
 def test_redteam_excludes_broken_rung1_survivor(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from flowforge.agents import dispatcher
     from flowforge.data import frozen_fields
+    from flowforge.orchestrator import round as round_mod
     from flowforge.orchestrator.round import run_round, synthetic_fields
 
+    # Never touch the real attack library with fake breaks.
+    monkeypatch.setattr(round_mod, "ATTACKS_DIR", tmp_path / "attacks")
     inv0, basis0, target0 = synthetic_fields(n=8, seed=123)
 
     def fake_train_ids(root=None) -> list[str]:
@@ -96,8 +99,10 @@ def test_redteam_excludes_broken_rung1_survivor(tmp_path: Path, monkeypatch: pyt
 def test_redteam_ablation_skips_exclusion(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from flowforge.agents import dispatcher
     from flowforge.data import frozen_fields
+    from flowforge.orchestrator import round as round_mod
     from flowforge.orchestrator.round import run_round, synthetic_fields
 
+    monkeypatch.setattr(round_mod, "ATTACKS_DIR", tmp_path / "attacks")
     inv0, basis0, target0 = synthetic_fields(n=8, seed=123)
 
     def fake_train_ids(root=None) -> list[str]:
