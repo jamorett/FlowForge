@@ -28,24 +28,43 @@ export function EventFeed({ session = "default", backlog = "instant" }: { sessio
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const ws = eventsSocket(session, backlog);
-    ws.onmessage = (ev) => {
-      const raw = String(ev.data);
-      let parsed: Record<string, any> | undefined;
-      try {
-        parsed = JSON.parse(raw);
-      } catch {
-        // raw string
-      }
-      const item: EventItem = {
-        raw,
-        parsed,
-        timestamp: new Date().toLocaleTimeString(),
+    // The server ends the stream after ~1 s idle; live rounds pause far longer
+    // between model calls, so reconnect and skip the events already received.
+    let seen = 0;
+    let stopped = false;
+    let ws: WebSocket;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    setEvents([]);
+    const connect = () => {
+      ws = eventsSocket(session, backlog, seen);
+      ws.onmessage = (ev) => {
+        const raw = String(ev.data);
+        let parsed: Record<string, any> | undefined;
+        try {
+          parsed = JSON.parse(raw);
+        } catch {
+          // raw string
+        }
+        if (parsed?.type === "end") return;
+        seen += 1;
+        const item: EventItem = {
+          raw,
+          parsed,
+          timestamp: new Date().toLocaleTimeString(),
+        };
+        setEvents((prev) => [...prev.slice(-99), item]);
       };
-      setEvents((prev) => [...prev.slice(-99), item]);
+      ws.onclose = () => {
+        if (!stopped) timer = setTimeout(connect, 2000);
+      };
     };
-    return () => ws.close();
-  }, [session]);
+    connect();
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+      ws.close();
+    };
+  }, [session, backlog]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });

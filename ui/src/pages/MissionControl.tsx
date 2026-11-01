@@ -15,7 +15,7 @@ const ROLES = [
 ];
 
 export function MissionControl({ session: propSession = "default" }: { session?: string }) {
-  const q = useQuery({ queryKey: ["session", propSession], queryFn: () => fetchSessionState(propSession) });
+  const q = useQuery({ queryKey: ["session", propSession], queryFn: () => fetchSessionState(propSession), refetchInterval: 5000 });
   const [session, setSession] = useState(propSession === "default" ? "round-1" : propSession);
   const [live, setLive] = useState(false);
   const [starting, setStarting] = useState(false);

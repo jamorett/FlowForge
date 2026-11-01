@@ -42,7 +42,7 @@ const SAMPLE_CANDIDATES = [
 ];
 
 export function CandidateInspector({ session = "default" }: { session?: string }) {
-  const matrix = useQuery({ queryKey: ["matrix", session], queryFn: () => fetchMatrix(session) });
+  const matrix = useQuery({ queryKey: ["matrix", session], queryFn: () => fetchMatrix(session), refetchInterval: 5000 });
   const regions = useQuery({ queryKey: ["regions", session], queryFn: () => fetchLatestRegions(session) });
   const [selectedIdx, setSelectedIdx] = useState(0);
 

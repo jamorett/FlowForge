@@ -4,7 +4,7 @@ import { fetchMatrix } from "../api/client";
 import { MatrixHeatmap } from "../components/MatrixHeatmap";
 
 export function GeneralizationMatrix({ session = "default" }: { session?: string }) {
-  const q = useQuery({ queryKey: ["matrix", session], queryFn: () => fetchMatrix(session) });
+  const q = useQuery({ queryKey: ["matrix", session], queryFn: () => fetchMatrix(session), refetchInterval: 5000 });
   return (
     <section aria-label="Generalization matrix" className="space-y-3">
       <h2 className="text-xl font-semibold">Generalization Matrix</h2>

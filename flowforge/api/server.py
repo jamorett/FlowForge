@@ -22,8 +22,12 @@ import re
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="FlowForge")
+# The UI runs on its own port (Vite/static, 5173); without this the browser blocks every REST call.
+app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+                   allow_methods=["GET", "POST"], allow_headers=["*"])
 PACE_SECONDS = 0.05
 TAIL_POLL_SECONDS = PACE_SECONDS
 # Bounded live-tail: ~1 s (20 polls x 50 ms) without new data ends the stream.
@@ -344,11 +348,13 @@ def latest_regions(session: str = "default", use_api: bool = False) -> dict:
 
 
 @app.websocket("/ws/events")
-async def ws_events(ws: WebSocket, session: str = "default", backlog: str = "paced") -> None:
+async def ws_events(ws: WebSocket, session: str = "default", backlog: str = "paced", skip: int = 0) -> None:
     """Stream a session's events. ``backlog="instant"`` sends the events already on disk at once
     (live view: no waiting for history); only events appended afterwards are paced. The default
-    paces everything, which the Replay page uses to animate a recorded session."""
+    paces everything, which the Replay page uses to animate a recorded session. ``skip``: events
+    the client already holds (reconnect after the idle end) are not resent."""
     await ws.accept()
+    to_skip = max(int(skip), 0)
     try:
         path = _events_path(session)
         replay = os.environ.get("FLOWFORGE_REPLAY") == "1"
@@ -382,6 +388,9 @@ async def ws_events(ws: WebSocket, session: str = "default", backlog: str = "pac
                 for line in lines:
                     if not line.strip():
                         continue
+                    if to_skip:
+                        to_skip -= 1
+                        continue
                     await _send(line)
                 in_backlog = False
                 if replay:
@@ -398,7 +407,7 @@ async def ws_events(ws: WebSocket, session: str = "default", backlog: str = "pac
 
         # Flush a final unterminated line (finite/replay files and a
         # writer that finished without a trailing newline).
-        if pending.strip():
+        if pending.strip() and not to_skip:
             await _send(pending.strip())
         # Prompt end: no trailing sleep after the last event / decision.
         await ws.send_text(json.dumps({"type": "end", "sent": sent}))

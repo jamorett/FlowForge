@@ -35,11 +35,12 @@ export async function fetchMatrix(session = "default"): Promise<MatrixData> {
   return r.json() as Promise<MatrixData>;
 }
 // backlog "instant": history arrives at once (live view); "paced": ~20/s animation (Replay).
-export function eventsSocket(session = "default", backlog: "instant" | "paced" = "instant"): WebSocket {
+// skip: events already received (reconnect after the server's idle end).
+export function eventsSocket(session = "default", backlog: "instant" | "paced" = "instant", skip = 0): WebSocket {
   const wsBase = base
     ? base.replace(/^http/, "ws")
     : `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}`;
-  return new WebSocket(`${wsBase}/ws/events?session=${encodeURIComponent(session)}&backlog=${backlog}`);
+  return new WebSocket(`${wsBase}/ws/events?session=${encodeURIComponent(session)}&backlog=${backlog}&skip=${skip}`);
 }
 export interface RegionsData { image: string | null; source: string; model: string | null; regions: { region: string; box: number[]; max_error?: number; mean_error?: number; severity?: string; source?: string }[]; detail: string }
 export interface StartRoundResult { status: string; session?: string; mock?: boolean; events?: string; reason?: string }
