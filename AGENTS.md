@@ -2,7 +2,7 @@
 
 ## Authority
 
-- `v2 Build spec.md` wins on methodology and research questions RP1–RP6.
+- `docs/build-spec.md` (the v2 build spec) wins on methodology and research questions RP1–RP6.
 - `docs/plans/2026-10-26-flowforge-v2-implementation-plan.md` wins on sequencing.
 - If spec and plan conflict on methodology/RP1–RP6, follow the spec; on order of work, follow the plan.
 

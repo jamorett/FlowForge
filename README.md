@@ -7,7 +7,7 @@ Docker, and SAM 3.1 segments the error maps so you can see *where* each
 candidate fails. Everything streams to a React cockpit: groups interacting,
 equations proposed, red-team challenges, and evaluations as they happen.
 
-Methodology follows [v2 Build spec.md](v2%20Build%20spec.md); work sequencing
+Methodology follows [docs/build-spec.md](docs/build-spec.md); work sequencing
 follows [docs/plans/2026-10-26-flowforge-v2-implementation-plan.md](docs/plans/2026-10-26-flowforge-v2-implementation-plan.md).
 Tolerances are frozen in `configs/tolerances.yaml` — never loosened to make a
 check pass.
@@ -36,6 +36,30 @@ check pass.
   Plotly cockpit. Mission Control starts mock (free) or live rounds;
   Candidate Inspector shows live candidates with a `LIVE`/`OFFLINE SAMPLES`
   badge.
+
+## Repository layout
+
+```text
+flowforge/      Python package (agents, dsl, physics, solver, ladder, redteam,
+                elegance, composer, orchestrator, literature, render, api)
+openfoam/       correctedKOmegaSST C++ class, case templates, hill meshing
+configs/        budgets, case splits, frozen tolerances, experiment arms
+prompts/        versioned role prompts (hash logged on every call)
+library/        cross-session memory: modules, attacks, rejected, findings, curriculum
+scripts/        entry points: download_data, run_experiment, run_arms,
+                evaluate_locked, reproduce_champion, export_demo
+tests/          unit/ (fast, CI), agents/, science/, integration/ (Docker solver gates)
+ui/             React + Plotly cockpit (Vite)
+docker/         pinned OpenFOAM image + compose
+docs/           build-spec.md (methodology authority), plans/ (sequencing authority),
+                history/ (frozen snapshots: Oct 27 audit, Oct 28 status; not current)
+notebooks/      analysis and figures
+data/  runs/  scratch/   git-ignored: datasets + locked vault, session outputs, probes
+```
+
+Run every command from the repo root: `configs/` and `prompts/` are found from
+the package location, but `runs/`, `data/` and `library/` resolve relative to the
+working directory.
 
 ## Status (2026-10-29, verified this session)
 
