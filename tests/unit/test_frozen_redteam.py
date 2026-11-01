@@ -51,7 +51,9 @@ def _setup(monkeypatch, tmp_path):
             seen["ctx"] = dict(context)
             return Res({"flows": [{"kind": "periodic_hill", "alpha": 0.5, "reynolds": 5600}, {"kind": "bump", "alpha": 9.0, "reynolds": 100}], "risk_audit": "fake"})
         if role == "theorist":
-            return Res({"expressions": ["0", "I1"], "mechanisms": ["m"], "risk_audit": "fake"})
+            # Four proposals so rung-1 halving keeps two fitted survivors:
+            # "0.5" and an I1-form that the fake attack breaks off-training.
+            return Res({"expressions": ["0", "I1", "2 * T2", "5 * T3"], "mechanisms": ["m"], "risk_audit": "fake"})
         if role == "board":
             return Res({"mechanisms": [], "budget_split": {"theorist": 1.0}, "risk_audit": "fake"})
         if role == "coder":
@@ -82,12 +84,17 @@ def test_frozen_redteam_breaks_and_persists(tmp_path, monkeypatch):
     events = [json.loads(line) for line in Path(result["events_path"]).read_text(encoding="utf-8").splitlines() if line.strip()]
     rt = [e for e in events if e.get("type") == "redteam"][-1]
     assert rt["mode"] == "frozen"
+    assert rt["pool"] == "rung1"
     assert len(rt["attacks"]) == 2
     assert rt["attacks"][0]["available"] is True and rt["attacks"][0]["case_id"] == "attack_a"
     assert rt["attacks"][1]["available"] is False and rt["attacks"][1]["case_id"] is None
     assert rt["n_broken"] == 1
     assert rt["breaks"][0]["case_id"] == "attack_a" and rt["breaks"][0]["ratio"] == 2.0
     assert "I1" in rt["breaks"][0]["expression"]
+    assert rt["breaks"][0]["expression"] in rt["excluded"]
+    order = [e.get("type") for e in events]
+    assert order.index("redteam") < order.index("rung2")
+    assert all(s.get("expression") != rt["breaks"][0]["expression"] for s in result["final_rung3"])
     files = list((tmp_path / "attacks").glob("*.json"))
     assert len(files) == 1
     payload = json.loads(files[0].read_text(encoding="utf-8"))

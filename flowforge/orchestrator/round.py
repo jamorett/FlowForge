@@ -34,6 +34,10 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 ATTACKS_DIR = Path("library/attacks")
+# Frozen red-team break rule: a candidate worse than SST (ratio > 1.0) on
+# ANY unseen flow is broken. SST is the "do nothing" baseline, so losing
+# to it off-training is an objective failure, not a tunable threshold.
+REDTEAM_BREAK_RATIO = 1.0
 
 MOCK_CANDIDATES = ("0", "I1", "tanh(I1)", "I1 + I2")
 
@@ -265,7 +269,10 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
     """
     from flowforge.agents.dispatcher import dispatch_role, RoleDispatchError
     from flowforge.agents.runtime.client import ModelRuntime, BudgetExceededError
-    from flowforge.ladder.ladder import apriori_mse, run_ladder
+    from flowforge.ladder.ladder import (
+        apriori_mse, halving, rung0 as rung0_pass, rung1_scores,
+        rung2_short, rung3_full,
+    )
 
     from flowforge.orchestrator.history import session_history
 
@@ -410,7 +417,7 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
         "fits": json.loads(json.dumps(fits, default=float)),
     })
 
-    # --- Steps 4-7: Rungs (deterministic, same as mock) ---
+    # --- Steps 4-5: Rungs 0-1 (deterministic, same as mock) ---
     def short_eval(expr: str) -> float:
         from flowforge.dsl.evaluate import candidate_anisotropy
         k = max(1, len(target) // 2)
@@ -418,17 +425,7 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
         sub_basis = {name: arr[:k] for name, arr in basis.items()}
         return apriori_mse(candidate_anisotropy(expr, sub_inv, sub_basis), target[:k])
 
-    try:
-        ladder = run_ladder(expressions, inv, basis, target, short_eval=short_eval, b_rans=b_rans)
-    except TypeError as exc:
-        if "b_rans" not in str(exc):
-            raise
-        ladder = run_ladder(expressions, inv, basis, target, short_eval=short_eval)
-    survivors = ladder["rung1"]
-    final = ladder["rung3"]
-
-    for rung in ("rung0", "rung1", "rung2", "rung3"):
-        rung_data = ladder.get(rung, ladder.get(f"{rung}_passed", []))
+    def _log_rung(rung: str, rung_data: list) -> None:
         event_logger.log({
             "type": rung, "step": rung, "role": rung,
             "round": round_no, "mock": False, "synthetic": False,
@@ -438,6 +435,111 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
             "n_points": int(target.shape[0]),
             "survivors": json.loads(json.dumps(rung_data, default=float)) if isinstance(rung_data, list) else [],
         })
+
+    passed0 = [e for e in expressions if rung0_pass(e)]
+    rung1 = halving(rung1_scores(passed0, inv, basis, target)) if passed0 else []
+    _log_rung("rung0", passed0)
+    _log_rung("rung1", rung1)
+    survivors = rung1
+
+    # --- Step 6: Red Team screens the rung-1 pool (frozen mode) ---
+    # A candidate worse than SST on ANY unseen flow is broken: excluded
+    # before rung 2, with an attack report. Post-hoc annotation of
+    # rung-3 survivors alone never applied pressure (30 pilot rounds,
+    # 0 breaks) because the filter upstream only ever saw robust
+    # candidates. This is the RP1 treatment: exclusion, not annotation.
+    attack_cases: list[str] = []
+    redteam_breaks: list[dict] = []
+    broken_exprs: set[str] = set()
+    case_flow: dict[str, dict] = {}
+    all_broken = False
+    if redteam:
+        redteam_context = {
+            "champions": [s.get("expression") for s in rung1],
+            "attack_suite": lib_context.get("attacks", []),
+            "available_frozen_flows": available_attack_flows(),
+        }
+        try:
+            redteam_result = dispatch_role("redteam", runtime, redteam_context)
+            redteam_data = redteam_result.model_dump()
+        except (RoleDispatchError, BudgetExceededError) as exc:
+            logger.warning("RedTeam dispatch failed: %s", exc)
+            redteam_data = {"flows": [{"kind": "fallback"}],
+                             "risk_audit": f"RedTeam fallback: {exc}"}
+        flows = redteam_data.get("flows", [])
+        if not isinstance(flows, list):
+            flows = []
+        attacks: list[dict] = []
+        seen: set[str] = set()
+        for spec in flows:
+            cid = attack_case_for(spec) if isinstance(spec, dict) else None
+            ok = cid is not None
+            attacks.append({"flow": spec, "case_id": cid, "available": ok})
+            if ok and cid not in seen:
+                seen.add(cid)
+                attack_cases.append(cid)
+                if isinstance(spec, dict):
+                    case_flow[cid] = spec
+        # Probe set: red-team attack hills plus the held-out validation
+        # cases (never train cases). Break = worse than SST anywhere.
+        probe_cases: list[str] = []
+        for cid in list(attack_cases) + list(validation_case_ids()):
+            if cid not in probe_cases and cid not in _train_cases:
+                probe_cases.append(cid)
+        for item in rung1:
+            expr = item.get("expression", "")
+            if not expr:
+                continue
+            scores = score_on_cases(expr, probe_cases, max_points_per_case=4000)
+            for cid, payload in scores.items():
+                if not isinstance(payload, dict) or "error" in payload:
+                    logger.warning("frozen attack error %s on %s: %s", expr, cid, payload.get("error") if isinstance(payload, dict) else payload)
+                    continue
+                try:
+                    ratio = float(payload.get("ratio"))
+                except (TypeError, ValueError):
+                    logger.warning("frozen attack bad ratio %s on %s", expr, cid)
+                    continue
+                if ratio > REDTEAM_BREAK_RATIO:
+                    redteam_breaks.append({"expression": expr, "case_id": cid, "ratio": ratio})
+        broken_exprs = {b["expression"] for b in redteam_breaks}
+        for b in redteam_breaks:
+            _save_frozen_break(b["case_id"], b["expression"], b["ratio"], case_flow.get(b["case_id"]))
+        event_logger.log({
+            "type": "redteam", "step": "redteam", "role": "redteam",
+            "round": round_no, "mock": False, "synthetic": False,
+            "source": "live", "session": session_name,
+            "prompt_hash": _prompt_hash_for(f"flowforge:round:{round_no}:step:redteam"),
+            **redteam_data,
+            "mode": "frozen",
+            "attacks": attacks,
+            "probe_cases": probe_cases,
+            "breaks": redteam_breaks,
+            "n_broken": len(redteam_breaks),
+            "excluded": sorted(broken_exprs),
+            "pool": "rung1",
+        })
+    else:
+        redteam_data = {"skipped": True, "flows": [],
+                         "risk_audit": "Red-team disabled (ablation)."}
+        event_logger.log({
+            "type": "redteam", "step": "redteam", "role": "redteam",
+            "round": round_no, "mock": False, "synthetic": False,
+            "source": "live", "mode": "live", "session": session_name,
+            "prompt_hash": _prompt_hash_for(f"flowforge:round:{round_no}:step:redteam"),
+            "skipped": True,
+            **redteam_data,
+        })
+
+    # --- Steps 7: Rungs 2-3 on unbroken survivors only ---
+    advanced = [s for s in rung1 if s.get("expression") not in broken_exprs]
+    rung2 = rung2_short(advanced, short_eval=short_eval)
+    _log_rung("rung2", rung2)
+    rung3 = rung3_full(rung2, inv, basis, target, b_rans=b_rans)
+    _log_rung("rung3", rung3)
+    final = rung3
+    if not final and redteam_breaks:
+        all_broken = True
 
     # --- Step 8: Analyst ---
     analyst_context = {
@@ -483,83 +585,10 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
         **skeptic_data,
     })
 
-    # --- Step 10: Red Team (frozen mode) ---
-    attack_cases: list[str] = []
-    redteam_breaks: list[dict] = []
-    broken_exprs: set[str] = set()
-    case_flow: dict[str, dict] = {}
-    all_broken = False
-    if redteam:
-        redteam_context = {
-            "champions": [s.get("expression") for s in final],
-            "attack_suite": lib_context.get("attacks", []),
-            "available_frozen_flows": available_attack_flows(),
-        }
-        try:
-            redteam_result = dispatch_role("redteam", runtime, redteam_context)
-            redteam_data = redteam_result.model_dump()
-        except (RoleDispatchError, BudgetExceededError) as exc:
-            logger.warning("RedTeam dispatch failed: %s", exc)
-            redteam_data = {"flows": [{"kind": "fallback"}],
-                             "risk_audit": f"RedTeam fallback: {exc}"}
-        flows = redteam_data.get("flows", [])
-        if not isinstance(flows, list):
-            flows = []
-        attacks: list[dict] = []
-        seen: set[str] = set()
-        for spec in flows:
-            cid = attack_case_for(spec) if isinstance(spec, dict) else None
-            ok = cid is not None
-            attacks.append({"flow": spec, "case_id": cid, "available": ok})
-            if ok and cid not in seen:
-                seen.add(cid)
-                attack_cases.append(cid)
-                if isinstance(spec, dict):
-                    case_flow[cid] = spec
-        for cid in attack_cases:
-            for item in final:
-                expr = item.get("expression", "")
-                if not expr:
-                    continue
-                scores = score_on_cases(expr, [cid], max_points_per_case=4000)
-                payload = scores.get(cid, {})
-                if "error" in payload:
-                    logger.warning("frozen attack error %s on %s: %s", expr, cid, payload.get("error"))
-                    continue
-                try:
-                    ratio = float(payload.get("ratio"))
-                except (TypeError, ValueError):
-                    logger.warning("frozen attack bad ratio %s on %s", expr, cid)
-                    continue
-                if ratio > 1.0:
-                    redteam_breaks.append({"expression": expr, "case_id": cid, "ratio": ratio})
-        broken_exprs = {b["expression"] for b in redteam_breaks}
-        for b in redteam_breaks:
-            _save_frozen_break(b["case_id"], b["expression"], b["ratio"], case_flow.get(b["case_id"]))
-        event_logger.log({
-            "type": "redteam", "step": "redteam", "role": "redteam",
-            "round": round_no, "mock": False, "synthetic": False,
-            "source": "live", "session": session_name,
-            "prompt_hash": _prompt_hash_for(f"flowforge:round:{round_no}:step:redteam"),
-            **redteam_data,
-            "mode": "frozen",
-            "attacks": attacks,
-            "breaks": redteam_breaks,
-            "n_broken": len(redteam_breaks),
-        })
-    else:
-        redteam_data = {"skipped": True, "flows": [],
-                         "risk_audit": "Red-team disabled (ablation)."}
-        event_logger.log({
-            "type": "redteam", "step": "redteam", "role": "redteam",
-            "round": round_no, "mock": False, "synthetic": False,
-            "source": "live", "mode": "live", "session": session_name,
-            "prompt_hash": _prompt_hash_for(f"flowforge:round:{round_no}:step:redteam"),
-            "skipped": True,
-            **redteam_data,
-        })
-
     # --- Step 11: Composer ---
+    # (Red team already ran at Step 6 on the rung-1 pool; broken
+    # expressions were excluded before rungs 2-3. The safety filter in
+    # champion selection below is a second net for the same set.)
     composer_context = {
         "modules": [s.get("expression") for s in final],
         "regime_features": ["I1", "I2"],
@@ -641,10 +670,11 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
                       "candidates": group_exprs[gid]}
                      for gid, mech in zip(group_ids, mechanisms)],
         "survivors_rung1": survivors,
-        "survivors_rung2": ladder["rung2"],
+        "survivors_rung2": rung2,
         "final_rung3": final,
         "champion": champion,
         "status": "ok" if final else "all_rejected",
+        "redteam_excluded": sorted(broken_exprs),
         "session": session_name,
         "session_dir": str(resolved_dir),
         "events_path": str(events_path),
