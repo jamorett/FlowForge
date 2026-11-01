@@ -11,7 +11,11 @@ import argparse
 import datetime
 import json
 import statistics
+import sys
 from pathlib import Path
+
+# Ensure project root is importable when invoked as `python scripts/run_arms.py`.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 ARMS = ("swarm", "swarm_no_redteam", "sparse_baseline")
 SEEDS = (42, 43, 44)
@@ -25,7 +29,25 @@ def summarize(results: list[float]) -> dict:
     assert len(results) == 3, "science protocol requires exactly 3 seeds"
     return {"mean": statistics.mean(results),
             "stdev": statistics.stdev(results) if len(results) > 1 else 0.0,
+            "min": min(results),
+            "max": max(results),
             "runs": results}
+
+
+def mann_whitney_u(a: list[float], b: list[float]) -> float:
+    """Mann-Whitney U statistic (two-sample, non-parametric).
+
+    For n=3, U in [0, 9]. U=9 means every sample of ``a`` beats every
+    sample of ``b``. Used for the RP1/RP2 arm comparisons.
+    """
+    u = 0.0
+    for ai in a:
+        for bi in b:
+            if ai < bi:
+                u += 1.0
+            elif ai == bi:
+                u += 0.5
+    return float(u)
 
 
 def parse_seed_list(text: str) -> list[int]:

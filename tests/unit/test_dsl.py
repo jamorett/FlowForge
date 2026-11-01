@@ -74,3 +74,47 @@ def test_snapping_set_and_rotation() -> None:
     assert try_snap(0.99, 1.0, lambda c: 1.005) == 1.0
     assert try_snap(0.99, 1.0, lambda c: 2.0) == 0.99
     assert rotation_invariant(lambda m: m @ m, np.diag([1.0, 2.0, 3.0]))
+
+
+def test_earsm_tensor_decomposition() -> None:
+    import numpy as np
+    from flowforge.dsl.parser import decompose_candidate, parse_expression, validate_candidate
+    from flowforge.dsl.evaluate import candidate_anisotropy
+
+    expr = validate_candidate("0.08 * T2 + 0.02 * T3")
+    coeffs = decompose_candidate(expr)
+    assert float(coeffs["T2"]) == pytest.approx(0.08)
+    assert float(coeffs["T3"]) == pytest.approx(0.02)
+    assert coeffs["T1"] == 0
+    assert set(coeffs) == {"T1", "T2", "T3"}  # T4 rejected at validation
+
+    # Evaluate with synthetic basis
+    rng = np.random.default_rng(123)
+    inv = {f"I{i}": rng.standard_normal(4) for i in range(1, 6)}
+    basis = {f"T{i}": rng.standard_normal((4, 3, 3)) for i in range(1, 5)}
+    # Symmetrize and make traceless
+    for k in basis:
+        b = 0.5 * (basis[k] + np.swapaxes(basis[k], -1, -2))
+        tr = np.trace(b, axis1=-2, axis2=-1)[..., None, None]
+        basis[k] = b - tr * np.eye(3) / 3
+
+    res = candidate_anisotropy("0.08 * T2 + 0.02 * T3", inv, basis)
+    assert res.shape == (4, 3, 3)
+    assert np.allclose(res, np.swapaxes(res, -1, -2), atol=1e-10)
+    assert np.allclose(np.trace(res, axis1=-2, axis2=-1), 0, atol=1e-10)
+
+
+def test_earsm_invalid_cases() -> None:
+    from flowforge.dsl.parser import validate_candidate
+
+    with pytest.raises(ValueError):
+        validate_candidate("T1 * T2")  # Non-linear tensor product forbidden
+
+    # Spec S3.3 allows a free scalar g_0: it folds into T1 (single-term form).
+    from flowforge.dsl.parser import tensor_coefficients
+    got = tensor_coefficients("0.08 * T2 + 5")
+    assert set(got) == {"T1", "T2"}
+
+    with pytest.raises(ValueError):
+        validate_candidate("tanh(T1)")  # Tensor inside scalar function forbidden
+

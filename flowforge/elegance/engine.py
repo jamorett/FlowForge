@@ -82,15 +82,66 @@ def snap_value(value: float, error_before: float, error_after_fn) -> float:
     return try_snap(value, error_before, error_after_fn)
 
 
+PARSIMONY_GAMMA = 0.05     # calibrated parsimony pressure (Phase 6.3)
+MAX_COMPLEXITY_NODES = 35  # maximum allowed complexity for Pareto scoring
+
+
+def pareto_score(worst_error: float, error_sst: float, complexity: int,
+                 gamma: float = PARSIMONY_GAMMA,
+                 c_max: int = MAX_COMPLEXITY_NODES) -> float:
+    """Pareto-optimal elegance score (Phase 6.3, BIC-inspired).
+
+    Score = max_k (Error_model(k) / Error_SST(k)) + gamma * (Complexity / C_max)
+
+    Lower is better. The first term measures how much better (or worse) the
+    candidate is vs the SST baseline. The second term penalizes complexity
+    with calibrated pressure gamma = 0.05, ensuring a candidate with
+    twice the complexity only wins if it meaningfully outperforms simpler ones.
+
+    Args:
+        worst_error: Worst-case error of the candidate across flows.
+        error_sst: SST baseline error on the same worst-case flow.
+        complexity: AST node count of the candidate expression.
+        gamma: Parsimony pressure coefficient.
+        c_max: Maximum complexity for normalization.
+
+    Returns:
+        Pareto score (lower = better).
+    """
+    error_ratio = worst_error / max(error_sst, 1e-12)
+    complexity_penalty = gamma * (complexity / max(c_max, 1))
+    return error_ratio + complexity_penalty
+
+
 def pick_champion(candidates: list[dict],
                   gate_dl_penalty_bits: float = GATE_DL_PENALTY_BITS) -> dict:
     """candidates: {id, worst_error, dl[, dl_penalty_bits|n_gates]}.
 
-    Within 3% of best worst-case error -> min *effective* DL, where the
-    effective DL adds each candidate's 16-bit-per-gate penalty (see
-    ``_effective_dl``) so a gated composite pays for its gates.
+    Supports two scoring modes:
+    1. Pareto mode (Phase 6.3): if candidates carry ``error_sst`` and
+       ``complexity`` fields, uses the Pareto-optimal score::
+
+           Score = Error_model / Error_SST + gamma * Complexity / C_max
+
+       Picks the candidate with the lowest Pareto score.
+
+    2. Legacy DL mode: within 3% of best worst-case error -> min *effective*
+       DL, where effective DL adds each candidate's 16-bit-per-gate penalty
+       so a gated composite pays for its gates.
     """
     assert candidates, "no candidates to pick from"
+
+    # Pareto mode: if ALL candidates have error_sst and complexity
+    has_pareto = all("error_sst" in c and "complexity" in c for c in candidates)
+    if has_pareto:
+        scored = [
+            (pareto_score(c["worst_error"], c["error_sst"], c["complexity"]), c)
+            for c in candidates
+        ]
+        scored.sort(key=lambda x: x[0])
+        return scored[0][1]
+
+    # Legacy DL mode (backward compatible)
     best_err = min(c["worst_error"] for c in candidates)
     pool = [c for c in candidates if c["worst_error"] <= (1.0 + CHAMPION_MARGIN) * best_err]
     return min(pool, key=lambda c: _effective_dl(c, gate_dl_penalty_bits))

@@ -33,6 +33,7 @@ ALLOWED_FUNCTIONS = (sp.tanh, sp.exp, sp.sqrt, sp.Abs)
 # Vocabulary size used by the MDL description length in flowforge.elegance.
 VOCABULARY = (
     *INVARIANT_NAMES,
+    *TENSOR_NAMES,
     "+", "-", "*", "div", "tanh", "exp", "sqrt", "**",
     "const", "(", ")",
 )

@@ -28,11 +28,11 @@ def test_mismatched_lengths_raise_value_error() -> None:
     mods = [np.zeros(2), np.zeros(2), np.zeros(2)]
     gates = [np.zeros(2)] * 3
     tgts = [np.zeros(2), np.zeros(2), np.full(2, 99.0)]
-    # targets/modules mismatch
-    assert _raises_value_error(
-        lambda: evaluate_composition(mods, gates, tgts[:2], 1.0, 0.0)
-    )
-    # gate_inputs mismatch (neither len-1 nor len)
+    # M modules with K != M targets is now VALID (decoupled design, Phase 5.1).
+    # 3 modules + 2 targets should NOT raise ValueError.
+    r = evaluate_composition(mods, gates, tgts[:2], 1.0, 0.0)
+    assert "worst_error" in r  # Valid result
+    # gate_inputs mismatch (neither len(modules)-1 nor len(modules)) still errors.
     assert _raises_value_error(
         lambda: evaluate_composition(mods, gates[:1], tgts, 1.0, 0.0)
     )

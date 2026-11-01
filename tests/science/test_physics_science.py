@@ -197,3 +197,167 @@ class TestIngestedDatasetScienceVerification:
 
         # Check Pk_delta is finite
         assert np.all(np.isfinite(pk_delta)), f"{case_name} Pk_delta has non-finite values"
+
+
+class TestEARSMBeyondBoussinesq:
+    """Verify that multi-term EARSM produces physics beyond the Boussinesq hypothesis.
+
+    The Boussinesq hypothesis collapses to a_delta = g(I) * T1 (strain-aligned),
+    which cannot produce:
+      - Normal stress anisotropy: tau_11 != tau_22 (requires T3 or T4 terms)
+      - Non-zero off-diagonal components in non-shearing directions (requires T2)
+
+    These tests confirm the 4-term basis enables genuinely non-Boussinesq physics.
+
+    Reference: Pope (1975), J. Fluid Mech. 72(2); Ling et al. (2016), J. Fluid Mech. 807.
+    """
+
+    def _pure_shear_fields(self, n: int = 5):
+        """Generate pure shear flow: U = (ky, 0, 0), omega = 1.
+        Under pure shear: s_12 = s_21 = 0.5*k/omega, all others zero.
+        T2 = sw - ws has non-zero (1,2) and (2,1) components -> non-Boussinesq.
+        T3 = s^2 - (1/3)tr(s^2)*I has non-zero (1,1) and (2,2) -> normal stress anisotropy.
+        """
+        # grad_u for pure shear: du_x/dy = k, all others zero
+        k_rate = 2.0
+        grad_u = np.zeros((n, 3, 3))
+        grad_u[:, 0, 1] = k_rate  # du_x/dy = k_rate
+        omega = np.ones(n)
+        s, w = normalized_tensors(grad_u, omega)
+        inv = invariants(s, w)
+        basis = tensor_basis(s, w)
+        return s, w, inv, basis
+
+    def test_t1_only_is_boussinesq(self) -> None:
+        """Candidate with only T1 term produces Boussinesq-type anisotropy aligned with strain.
+
+        a_delta = g * T1 = g * s => a_delta is proportional to strain tensor.
+        This means a_delta[1,1] == a_delta[2,2] == 0 (no normal stress difference).
+        """
+        from flowforge.dsl.evaluate import candidate_anisotropy
+
+        _, _, inv, basis = self._pure_shear_fields()
+
+        # T1-only EARSM: collapses to linear eddy-viscosity correction
+        a_delta = candidate_anisotropy("0.5", inv, basis)
+
+        # Under pure shear, T1 = s = [[0, 0.5, 0], [0.5, 0, 0], [0, 0, 0]] (scaled)
+        # a_delta should be symmetric, traceless
+        assert np.allclose(a_delta, np.swapaxes(a_delta, -1, -2), atol=1e-10), \
+            "a_delta must be symmetric"
+        assert np.allclose(np.trace(a_delta, axis1=-2, axis2=-1), 0, atol=1e-10), \
+            "a_delta must be traceless"
+
+        # T1-only: no normal stress anisotropy (a_11 = a_22 = 0 for pure shear)
+        assert np.allclose(a_delta[:, 0, 0], 0.0, atol=1e-10), \
+            "T1-only has no normal stress anisotropy (a_11 must be zero)"
+        assert np.allclose(a_delta[:, 1, 1], 0.0, atol=1e-10), \
+            "T1-only has no normal stress anisotropy (a_22 must be zero)"
+
+    def test_t3_term_produces_normal_stress_anisotropy(self) -> None:
+        """T3 coefficient produces non-zero normal stress difference tau_11 - tau_33 != 0.
+
+        This is the key physical prediction missing from linear eddy-viscosity:
+        secondary flows in square ducts require a_11 != a_33 (wall-normal anisotropy).
+
+        Analytic result under pure shear U=(ky,0,0) with omega=1:
+          s = [[0, k/2, 0], [k/2, 0, 0], [0, 0, 0]]
+          s^2 = [[k^2/4, 0, 0], [0, k^2/4, 0], [0, 0, 0]]   (tr=k^2/2)
+          T3 = s^2 - (1/3)*tr(s^2)*I = diag(k^2/12, k^2/12, -k^2/6)
+               -> a_11 = a_22 = k^2/12 > 0
+               -> a_33 = -k^2/6 < 0
+               -> a_11 - a_33 = k^2/4 != 0  (key EARSM physics!)
+               -> Note: a_11 == a_22 by 2D-shear symmetry (this is correct, not a flaw).
+               -> Non-zero a_11 - a_33 enables secondary flows, corner vortices, etc.
+        """
+        from flowforge.dsl.evaluate import candidate_anisotropy
+
+        n = 5
+        k_rate = 2.0
+        grad_u = np.zeros((n, 3, 3))
+        grad_u[:, 0, 1] = k_rate
+        omega = np.ones(n)
+        s, w = normalized_tensors(grad_u, omega)
+        inv = invariants(s, w)
+        basis = tensor_basis(s, w)
+
+        # EARSM with T3 term: a_delta = T3
+        a_delta = candidate_anisotropy("T3", inv, basis)
+
+        # T3 must produce non-zero diagonal elements
+        assert not np.allclose(a_delta[:, 0, 0], 0.0, atol=1e-10), \
+            "T3 must produce non-zero a_11 (normal stress)"
+        assert not np.allclose(a_delta[:, 2, 2], 0.0, atol=1e-10), \
+            "T3 must produce non-zero a_33 (spanwise normal stress)"
+
+        # Key physics: a_11 - a_33 != 0 (streamwise/spanwise normal stress anisotropy)
+        nsd_13 = a_delta[:, 0, 0] - a_delta[:, 2, 2]
+        assert not np.allclose(nsd_13, 0.0, atol=1e-10), \
+            "T3 must produce non-zero normal stress difference a_11 - a_33"
+
+        # Under 2D shear symmetry: a_11 == a_22 (verified: both = k^2/12)
+        # This is physically correct; the 3D anisotropy is a_11 - a_33.
+        assert np.allclose(a_delta[:, 0, 0], a_delta[:, 1, 1], atol=1e-10), \
+            "Under pure 2D shear, T3 gives a_11 == a_22 (symmetric by construction)"
+
+        # Must remain symmetric and traceless
+        assert np.allclose(a_delta, np.swapaxes(a_delta, -1, -2), atol=1e-10)
+        assert np.allclose(np.trace(a_delta, axis1=-2, axis2=-1), 0, atol=1e-10)
+
+    def test_t2_term_produces_non_aligned_shear(self) -> None:
+        """T2 coefficient drives shear stress in planes not aligned with mean strain.
+
+        T2 = sw - ws captures the nonlinear interaction of strain and vorticity.
+        Under pure shear, T2 has components in (1,1), (2,2) directions representing
+        frame rotation effects (curvature sensitivity, streamline curvature correction).
+        """
+        from flowforge.dsl.evaluate import candidate_anisotropy
+
+        _, _, inv, basis = self._pure_shear_fields()
+
+        # T2-only EARSM
+        a_delta = candidate_anisotropy("T2", inv, basis)
+
+        # T2 is symmetric and traceless by construction
+        assert np.allclose(a_delta, np.swapaxes(a_delta, -1, -2), atol=1e-10)
+        assert np.allclose(np.trace(a_delta, axis1=-2, axis2=-1), 0, atol=1e-10)
+
+        # T2 = sw - ws != 0 under pure shear (vorticity w is non-zero)
+        # The result should be non-trivially non-zero
+        assert not np.allclose(a_delta, 0.0, atol=1e-10), \
+            "T2 must be non-zero under pure shear (strain-vorticity interaction)"
+
+    def test_full_earsm_candidate_evaluation_pipeline(self) -> None:
+        """Full EARSM candidate expression parsed and evaluated correctly.
+
+        Tests the complete pipeline: DSL string -> sympy parse -> lambdify
+        -> multi-term tensor sum -> symmetrize/deviatoric -> numpy output.
+        """
+        from flowforge.dsl.evaluate import candidate_anisotropy
+
+        n = 8
+        rng = np.random.default_rng(999)
+        grad_u = rng.standard_normal((n, 3, 3))
+        omega = rng.uniform(0.5, 5.0, size=n)
+        s, w = normalized_tensors(grad_u, omega)
+        inv = invariants(s, w)
+        basis = tensor_basis(s, w)
+
+        # Multi-term candidate (T4 banned: redundant in 2-D, parser rejects it)
+        expr = "0.3*T1 + 0.1*T2 + 0.05*I1*T3 + 0.02*I2*T1"
+        a_delta = candidate_anisotropy(expr, inv, basis)
+
+        # Shape: (n, 3, 3)
+        assert a_delta.shape == (n, 3, 3), f"Expected ({n}, 3, 3), got {a_delta.shape}"
+
+        # Symmetric
+        assert np.allclose(a_delta, np.swapaxes(a_delta, -1, -2), atol=1e-10)
+
+        # Traceless (deviatoric)
+        assert np.allclose(np.trace(a_delta, axis1=-2, axis2=-1), 0, atol=1e-10)
+
+        # Finite
+        assert np.all(np.isfinite(a_delta)), "EARSM output must be finite"
+
+        # Non-trivially non-zero (random grad_u with 3-term basis should be non-zero)
+        assert np.any(np.abs(a_delta) > 1e-10), "3-term EARSM must be non-zero for random flows"

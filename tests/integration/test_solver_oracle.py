@@ -138,7 +138,7 @@ def _mesh_hill(case: Path):
     # would only offset our wall from the DNS grid and inflate both
     # errors with a shared floor.
     profile = extract_wall_profile(STORE, smooth=False)
-    displace_hill_mesh(case, profile)
+    displace_hill_mesh(case, profile, grade=2.5)
     _container(case, "cd /case && postProcess -func writeCellCentres "
                     "-time 0 >/dev/null 2>&1")
     centers = read_cell_centres(case)

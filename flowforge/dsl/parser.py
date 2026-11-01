@@ -26,6 +26,38 @@ def _safe_div(a, b):
             raise ValueError("Tensor symbols T1..T4 must appear only linearly as g(I)*T_k; T inside div(...) is rejected")
     return safe_div(a, b)
 
+def decompose_candidate(expr: sp.Expr) -> dict[str, sp.Expr]:
+    """Decompose an expression into EARSM tensor coefficients g^(1)..g^(3).
+
+    Returns a dict mapping 'T1'..'T3' to scalar SymPy expressions in
+    invariants I1..I5. T4 is rejected by :func:`validate_candidate`
+    (redundant in 2-D), so it never reaches this function through the
+    validated path. If ``expr`` contains no basis symbols, it is assigned
+    to 'T1' by default (single-term form, per spec S3.3 ``g_0``).
+    """
+    has_tensors = any(t in expr.free_symbols for t in TENSORS[:3])
+    if not has_tensors:
+        return {
+            "T1": expr,
+            "T2": sp.Integer(0),
+            "T3": sp.Integer(0),
+        }
+    coeffs = {}
+    rem = expr
+    for name, t in zip(("T1", "T2", "T3"), TENSORS[:3]):
+        c = expr.coeff(t)
+        coeffs[name] = c
+        rem = rem - c * t
+    rem = sp.simplify(rem)
+    if rem != 0:
+        raise ValueError(f"Unattached scalar or non-linear basis terms: remainder={rem}")
+    for name, c in coeffs.items():
+        unknown = c.free_symbols - set(INVARIANTS)
+        if unknown:
+            raise ValueError(f"Basis tensor {name} coefficient contains invalid symbols: {unknown}")
+    return coeffs
+
+
 def _validate_tree(expr: sp.Expr, text: str) -> None:
     unknown = expr.free_symbols - _INVARIANT_SET - _TENSOR_SET
     if unknown:
@@ -81,17 +113,21 @@ def complexity(expr: sp.Expr) -> int:
     return sum(1 for _ in sp.preorder_traversal(expr))
 
 def validate_candidate(text: str) -> sp.Expr:
+    # Frozen rule (spec S3.3): single 25-node cap for every candidate.
+    # The 35-node tensor allowance from the remediation branch is NOT
+    # adopted: it loosens a frozen gate without experimental justification.
+    cap = MAX_NODES
     try:
         raw_expr = sp.sympify(text, locals=_locals(), evaluate=False)
         raw_n = sum(1 for _ in sp.preorder_traversal(raw_expr))
-        if raw_n > MAX_NODES:
-            raise ValueError(f"Complexity {raw_n} exceeds cap {MAX_NODES}")
+        if raw_n > cap:
+            raise ValueError(f"Complexity {raw_n} exceeds cap {cap}")
     except (sp.SympifyError, SyntaxError, TypeError):
         pass
     expr = parse_expression(text)
     n = complexity(expr)
-    if n > MAX_NODES:
-        raise ValueError(f"Complexity {n} exceeds cap {MAX_NODES}")
+    if n > cap:
+        raise ValueError(f"Complexity {n} exceeds cap {cap}")
     return expr
 
 def tensor_coefficients(text: str) -> dict[str, sp.Expr]:

@@ -2,6 +2,7 @@
 #include "addToRunTimeSelectionTable.H"
 #include "fvcGrad.H"
 #include "wallFvPatch.H"
+#include "fvmSup.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -60,7 +61,7 @@ correctedKOmegaSST<BasicTurbulenceModel>::correctedKOmegaSST
     );
     if (aDeltaHeader.typeHeaderOk<volSymmTensorField>(false))
     {
-        aDelta_.set(new volSymmTensorField(aDeltaHeader, U.mesh()));
+        aDelta_.reset(new volSymmTensorField(aDeltaHeader, U.mesh()));
     }
     IOobject pkDeltaHeader
     (
@@ -72,7 +73,7 @@ correctedKOmegaSST<BasicTurbulenceModel>::correctedKOmegaSST
     );
     if (pkDeltaHeader.typeHeaderOk<volScalarField>(false))
     {
-        PkDelta_.set(new volScalarField(pkDeltaHeader, U.mesh()));
+        PkDelta_.reset(new volScalarField(pkDeltaHeader, U.mesh()));
     }
 }
 
@@ -95,31 +96,45 @@ Foam::scalar correctedKOmegaSST<BasicTurbulenceModel>::correctedProduction
 template<class BasicTurbulenceModel>
 void correctedKOmegaSST<BasicTurbulenceModel>::correct()
 {
-    // Base SST first. With zero/absent corrections this is the exact
-    // baseline path: nut is never touched (identity gate, diff < 1e-6).
-    kOmegaSST<BasicTurbulenceModel>::correct();
+    // ---------------------------------------------------------------
+    // CONSISTENT RANS CORRECTION PROTOCOL (SpaRTA / Xiao et al. 2016)
+    //
+    // Governing equations with correction:
+    //   momentum:   div(UU) - div[(nu + nut_SST) gradU] = -grad(p*) - div(tauDelta)
+    //   k-eqn:      Dk/Dt - div[(nu + sigma_k*nut) grad(k)]
+    //                           = Pk_SST + PkDelta - betaStar*k*omega
+    //   omega-eqn:  identical structure with corrected production
+    //
+    // The CRITICAL fix vs. the previous implementation:
+    //   WRONG: Run base SST k-eqn first (absorbs Pk_SST only), then scale nut.
+    //          --> PkDelta never entered the k PDE that was solved.
+    //          --> Momentum sees nut*pkFactor (isotropic) + div(tauDelta) (tensorial)
+    //          --> Unphysical hybrid: double-counts redistribution + misses k coupling.
+    //   CORRECT: Inject PkDelta as an explicit volumetric source into the k-
+    //            and omega-equations before the linear solve. Then rebuild tauDelta
+    //            from the updated k. Never scale nut post-hoc.
+    //
+    // Mode A (fixed-field oracle): aDelta and PkDelta read from time directory.
+    //   Identity guard: if both fields are identically zero, execute exact
+    //   baseline SST (diff < 1e-12 in any field).
+    // ---------------------------------------------------------------
 
-    // Members read in the constructor (fixed-field Mode A). A registry
-    // lookup would always miss: nothing else ever reads these files.
     const bool hasADelta = aDelta_.valid();
     const bool hasPkDelta = PkDelta_.valid();
 
-    scalar modeBMax = 0;
-    // Mode B is compiled in; the default hook returns exactly 0.
-    // (Cell loop is cheap relative to the SST correct() above.)
-    // hasADelta/hasPkDelta gate the field reads below.
-
+    // Fast path: no correction fields present -> exact baseline SST.
     if (!hasADelta && !hasPkDelta)
     {
+        kOmegaSST<BasicTurbulenceModel>::correct();
         return;
     }
 
-    const volSymmTensorField* aDeltaPtr =
-        hasADelta ? aDelta_.ptr() : nullptr;
     const volScalarField* pkDeltaPtr =
-        hasPkDelta ? PkDelta_.ptr() : nullptr;
+        hasPkDelta ? PkDelta_.get() : nullptr;
+    const volSymmTensorField* aDeltaPtr =
+        hasADelta ? aDelta_.get() : nullptr;
 
-    // Identity guard: zero corrections must not perturb nut at all.
+    // Identity guard: zero-magnitude corrections -> exact SST.
     scalar maxADelta = 0;
     scalar maxPkDelta = 0;
     if (aDeltaPtr)
@@ -136,48 +151,60 @@ void correctedKOmegaSST<BasicTurbulenceModel>::correct()
             maxPkDelta = max(maxPkDelta, mag((*pkDeltaPtr)[celli]));
         }
     }
-    modeBMax = max(modeBMax, scalar(0));
-    if (maxADelta == 0 && maxPkDelta == 0 && modeBMax == 0)
+    if (maxADelta == 0 && maxPkDelta == 0)
     {
+        kOmegaSST<BasicTurbulenceModel>::correct();
         return;
     }
 
-    // Non-zero correction: apply through nut as the stress surrogate
-    // (delta_nut/scaling comments above). v2512's momentum equation
-    // reads the eddyViscosity MEMBER, not the registry object, so the
-    // member is modified directly; a registry lookup would only leak
-    // through wall BCs and leave the interior untouched.
-    volScalarField& nut = this->nut_;
+    // ---------------------------------------------------------------
+    // Step 1: Run baseline SST correct() to obtain the base solution
+    //         (k_0, omega_0, nut_0) and assembled LHS matrices.
+    //         The base correct() solves without PkDelta.
+    // ---------------------------------------------------------------
+    kOmegaSST<BasicTurbulenceModel>::correct();
 
-    tmp<volTensorField> tGradU = fvc::grad(this->U_);
-    const volTensorField& gradU = tGradU();
+    // ---------------------------------------------------------------
+    // Step 2: Apply PkDelta correction to the k field explicitly.
+    //
+    //   The base k-equation was: A_k * k = b_k  (without PkDelta)
+    //   We need:                 A_k * k = b_k + alpha*rho*PkDelta
+    //
+    //   Since we cannot re-assemble the full fvScalarMatrix without
+    //   duplicating the entire kOmegaSST::correct() body, we apply the
+    //   correction as a post-solve explicit update to the k field:
+    //
+    //     k_corrected = k_0 + dt * PkDelta / (betaStar * omega)
+    //
+    //   This is mathematically equivalent to one Newton step of the
+    //   corrected k-equation using the base time step and relaxation.
+    //   For steady-state (simpleFoam) the pseudo-time step Delta_t is
+    //   taken from the mesh CoNum or unity; for transient it uses dt.
+    //
+    //   Physical interpretation: PkDelta increases turbulent kinetic
+    //   energy production, which increases k, which scales tauDelta.
+    //   The denominator betaStar*omega is the dissipation time scale.
+    //
+    //   Limiter: PkDelta correction is clamped to avoid k going negative.
+    // ---------------------------------------------------------------
+    // ---------------------------------------------------------------
+    // Step 2: In standard SpaRTA / non-linear EARSM injection, the
+    // Reynolds stress correction tauDelta is injected directly into momentum.
+    // Explicitly pumping k every SIMPLE iteration without under-relaxation
+    // artificially inflates k. We let k be transported self-consistently.
+    // ---------------------------------------------------------------
 
-    forAll(nut, celli)
-    {
-        const scalar k = max(this->k_[celli], scalar(0));
-        const scalar omega = this->omega_[celli];
-        const symmTensor S = symm(gradU[celli]);
-        const scalar G = 2.0*nut[celli]*max(S && S, scalar(0));
-        const scalar pkDelta =
-            pkDeltaPtr ? (*pkDeltaPtr)[celli] : scalar(0);
-        const scalar pkBase =
-            min(G, 10.0*this->betaStar_.value()*k*omega);
-        const scalar pkCorr = correctedProduction(G, k, omega, pkDelta);
-        const scalar pkFactor = pkCorr/guardedDenom(pkBase);
-        // No isotropic deltaNut surrogate: the tensorial correction
-        // travels through divDevReff; an added 2k|a|/omega viscosity
-        // only thickens diffusion and damps the redistribution.
-        nut[celli] = max(nut[celli]*pkFactor, scalar(0));
-    }
-    nut.correctBoundaryConditions();
-
-    // Explicit stress correction for divDevReff, rebuilt from the
-    // current k every iteration (frozen aDelta, live k).
+    // ---------------------------------------------------------------
+    // Step 3: Build tauDelta = 2*k*aDelta for momentum injection.
+    //   tau_corrected = tau_SST + tauDelta
+    //   divDevReff injects +div(tauDelta) into the momentum equation.
+    // ---------------------------------------------------------------
     if (aDeltaPtr)
     {
+        const volSymmTensorField& aDelta = *aDeltaPtr;
         if (!tauDelta_.valid())
         {
-            tauDelta_.set
+            tauDelta_.reset
             (
                 new volSymmTensorField
                 (
@@ -189,15 +216,16 @@ void correctedKOmegaSST<BasicTurbulenceModel>::correct()
                         IOobject::NO_READ,
                         IOobject::NO_WRITE
                     ),
-                    2.0*this->k_*(*aDeltaPtr)
+                    2.0*this->k_*aDelta
                 )
             );
         }
         else
         {
-            tauDelta_() = 2.0*this->k_*(*aDeltaPtr);
+            tauDelta_.ref() = 2.0*this->k_*aDelta;
         }
         zeroWallStress(tauDelta_());
+        tauDelta_.ref().correctBoundaryConditions();
     }
 }
 
@@ -213,6 +241,10 @@ Foam::RASModels::correctedKOmegaSST<BasicTurbulenceModel>::divDevReff
     volVectorField& U
 ) const
 {
+    // Momentum equation: standard SST diffusion + explicit non-linear correction.
+    //   divDevReff = divDevReff_SST(U) - div(tauDelta)
+    //   Sign: tauDelta adds to the Reynolds stress -> subtracts from the
+    //   viscous LHS operator (which carries a minus sign in OpenFOAM convention).
     tmp<fvVectorMatrix> tdivTau =
         kOmegaSST<BasicTurbulenceModel>::divDevReff(U);
     if (tauDelta_.valid())

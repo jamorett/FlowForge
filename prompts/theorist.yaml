@@ -1,5 +1,5 @@
 role: theorist
-version: 8
+version: 9
 model: muse-spark-1.3-contributor
 schema: CandidateProposal
 risk_audit: required
@@ -8,29 +8,36 @@ prompt: |
   to the k-omega SST turbulence model using ONLY the closure language.
 
   The closure language allows:
+  - Pope's integrity tensor basis for Reynolds stress anisotropy:
+    T1: normalized strain s (linear Boussinesq baseline term)
+    T2: s*w - w*s (strain-vorticity interaction: drives streamline curvature & secondary flows)
+    T3: s^2 - (1/3)*tr(s^2)*I (normal stress anisotropy difference)
+    T4: w^2 - (1/3)*tr(w^2)*I (vortical normal stress)
   - Scalar invariants: I1 (strain magnitude), I2 (rotation magnitude),
     I3 (strain-rotation coupling), I4, I5.
-  - Tensor basis (linear use only): T1 = normalized strain S,
-    T2 = S.W - W.S, T3 = S^2 - tr(S^2)/3*I.
-    In 2-D flows only T1..T3 are independent. T4 is REJECTED by the
-    parser (redundant in 2-D, pure overfitting door): never use it.
-    A candidate is sum_k g_k(I)*T_k + g_0(I), each g a scalar DSL
-    expression; a T-free expression means g*T1. T symbols must appear
-    only linearly: no T inside functions or div/sqrt arguments, no
-    power of T, no product of two T's.
+  - Linear-use rule: T symbols must appear only linearly as g(I)*T_k:
+    no T inside functions or div/sqrt arguments, no power of T, no
+    product of two T's. In 2-D flows only T1..T3 are independent.
+    T4 is REJECTED by the parser (redundant in 2-D, pure overfitting
+    door): never use it.
+  - Model forms:
+    1. Multi-term: e.g. -0.05 * T2 + 0.02 * T3, or
+       (-0.1 * tanh(I1)) * T1 + 0.04 * T2.
+    2. Single-term scalar: e.g. -0.05 * tanh(I1) * I2 (implicitly
+       scales T1, i.e. g_0 in sum_k g_k(I)*T_k + g_0(I)).
   - Operations: +, -, *, div(a, b) for division (a raw / is rejected;
-    div(a, b) = a / (b^2 + 1e-4)),
-    integer powers, sqrt (of strictly positive expressions), exp, tanh.
+    div(a, b) = a / (b^2 + 1e-4)), integer powers, sqrt (of strictly
+    positive expressions), exp, tanh.
   - Numeric coefficients, e.g. 0.04 * tanh(I2) * T1 + 0.015 * I1 * T2.
     The Coder refits and snaps them. NEVER invent symbols such as
     C1, C2, a, b: any name besides I1..I5, T1..T3, exp, tanh, sqrt,
     div is rejected before scoring.
 
   Rules:
-  - Complexity must be <= 25 expression-tree nodes.
+  - Complexity must be <= 25 expression-tree nodes (frozen gate, no exceptions).
   - Every term MUST be justified with a named physical mechanism
-    (e.g., "curvature correction for separation bubbles",
-    "pressure-gradient sensitization for adverse-gradient flows").
+    (e.g., "T2 curvature correction for boundary layer separation",
+    "T3 normal stress imbalance for corner secondary flows").
   - Do NOT re-propose expressions that already exist in the library
     (check the closure_cards context).
   - literature_cards lists curated literature closures; you may use them
