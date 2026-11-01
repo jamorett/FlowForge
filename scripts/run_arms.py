@@ -93,7 +93,7 @@ def make_seed_row(seed: int, metric: float | None, expression: str | None,
 
 
 def round_metric(result: dict) -> float | None:
-    """Return the last round champion ratio, or None when unusable."""
+    """Return a round's champion ratio, or None when unusable."""
     if not isinstance(result, dict):
         return None
     if result.get("status") == "error":
@@ -165,6 +165,10 @@ def collect_swarm_arm(arm: str, seeds: list[int], rounds: int, groups: int,
         session = f"arms-{arm}-s{seed}"
         seed_cost = 0.0
         last_result: dict | None = None
+        # A round whose candidates are all rejected must not erase an earlier
+        # verified champion: the session keeps its best (lowest) ratio so far.
+        best_metric: float | None = None
+        best_expression: str | None = None
         completed = 0
         for round_no in range(1, int(rounds) + 1):
             if spent[0] > float(budget_usd):
@@ -175,6 +179,9 @@ def collect_swarm_arm(arm: str, seeds: list[int], rounds: int, groups: int,
                 session=session, redteam=want_redteam)
             last_result = result
             completed += 1
+            metric_now = round_metric(result)
+            if metric_now is not None and (best_metric is None or metric_now < best_metric):
+                best_metric, best_expression = metric_now, round_expression(result)
             cost = round_cost(result)
             spent[0] += cost
             seed_cost += cost
@@ -184,8 +191,7 @@ def collect_swarm_arm(arm: str, seeds: list[int], rounds: int, groups: int,
             if spent[0] > float(budget_usd):
                 incomplete[0] = True
         else:
-            metric = round_metric(last_result)
-            expression = round_expression(last_result)
+            metric, expression = best_metric, best_expression
             if completed < int(rounds):
                 incomplete[0] = True
         rows.append(make_seed_row(seed, metric, expression, session, seed_cost, dry_run))

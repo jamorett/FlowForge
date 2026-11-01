@@ -123,3 +123,20 @@ def test_runner_dry_run_shape_and_budget(tmp_path, monkeypatch, capsys) -> None:
     assert output["incomplete"] is True
     text = capsys.readouterr().out
     assert "swarm" in text
+
+
+def test_session_keeps_best_champion_when_later_round_rejects_all(monkeypatch) -> None:
+    from flowforge.orchestrator import round as round_module
+    from scripts import run_arms
+
+    outcomes = {1: {"status": "ok", "champion": {"expression": "I1*T1", "worst_validation_ratio": 0.78}},
+                2: {"status": "all_rejected", "champion": None},
+                3: {"status": "ok", "champion": {"expression": "I2*T1", "worst_validation_ratio": 0.9}}}
+
+    def fake_run_round(round_no, **kwargs):
+        return dict(outcomes[round_no], dollars_spent=0.1)
+
+    monkeypatch.setattr(round_module, "run_round", fake_run_round)
+    out = run_arms.collect_swarm_arm("swarm", [42], 3, 1, 10.0, False, [0.0], [False])
+    row = out["seeds"][0]
+    assert row["metric"] == 0.78 and row["expression"] == "I1*T1"

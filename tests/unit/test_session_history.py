@@ -198,3 +198,22 @@ def test_second_round_theorist_sees_first_best(tmp_path: Path, monkeypatch) -> N
     assert prev["best_candidates"], "second round should see first round fits"
     prev_exprs = [c["expression"] for c in prev["best_candidates"]]
     assert any(expr in first_fits for expr in prev_exprs)
+
+
+def test_rung3_rejections_reported_as_non_realizable(tmp_path: Path) -> None:
+    from flowforge.orchestrator.history import session_history
+
+    events = [
+        {"type": "fit", "round": 1, "fits": [
+            {"expression": "A*T1", "mse_after": 0.001, "status": "ok"},
+            {"expression": "B*T1", "mse_after": 0.002, "status": "ok"}]},
+        {"type": "rung2", "round": 1, "survivors": [{"expression": "A*T1"}, {"expression": "B*T1"}]},
+        {"type": "rung3", "round": 1, "survivors": [{"expression": "B*T1"}]},
+        {"type": "champion", "round": 1, "champion": None},
+    ]
+    path = tmp_path / "events.jsonl"
+    path.write_text("\n".join(json.dumps(e) for e in events), encoding="utf-8")
+    hist = session_history(path)
+    assert [b["expression"] for b in hist["broken"] if b.get("reason") == "non_realizable"] == ["A*T1"]
+    assert [b["expression"] for b in hist["best_candidates"]] == ["B*T1"]  # rejected one never ranked "best"
+    assert any("non-realizable" in h for h in hist["hints"])

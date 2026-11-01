@@ -135,6 +135,12 @@ def build_hints(rounds_seen: int, best: list[dict], champions: list[dict], broke
         unique = sorted({str(item["expression"]) for item in broken if item.get("expression")})
         joined = ", ".join(f"'{name}'" for name in unique[:5])
         hints.append(f"Do not re-propose broken expression(s): {joined}.")
+        unreal = sorted({str(i["expression"]) for i in broken if i.get("reason") == "non_realizable"})
+        if unreal:
+            hints.append(
+                "Rejected at rung 3 as non-realizable (corrected anisotropy left the "
+                f"barycentric triangle at some points): {', '.join(repr(e) for e in unreal[:5])}. "
+                "Accuracy is worthless if not realizable everywhere: keep corrections bounded.")
     return hints
 
 
@@ -172,6 +178,7 @@ def session_history(events_path: str | Path, k: int = 5) -> dict:
     collected_fits: list[dict] = []
     champions: list[dict] = []
     broken: list[dict] = []
+    passed: dict[str, dict] = {"rung2": {}, "rung3": {}}
     for raw_line in text.splitlines():
         line = raw_line.strip()
         if not line:
@@ -202,6 +209,12 @@ def session_history(events_path: str | Path, k: int = 5) -> dict:
                 record = fit_record(raw)
                 if record is not None:
                     collected_fits.append(record)
+        elif kind in ("rung2", "rung3"):
+            survivors = event.get("survivors")
+            if isinstance(survivors, list):
+                names = {s.get("expression") if isinstance(s, dict) else s for s in survivors}
+                passed[kind].setdefault(event.get("round"), set()).update(
+                    n.strip() for n in names if isinstance(n, str) and n.strip())
         elif kind == "redteam":
             breaks = event.get("breaks")
             if not isinstance(breaks, list):
@@ -221,9 +234,18 @@ def session_history(events_path: str | Path, k: int = 5) -> dict:
                     "case_id": case_id,
                     "ratio": ratio,
                 })
+    # Passed rung 2 but not rung 3 in the same round = rejected by the
+    # realizability gate; tell the theorist instead of ranking it "best".
+    non_realizable = sorted({e for rnd, s2 in passed["rung2"].items()
+                             for e in s2 - passed["rung3"].get(rnd, set())})
+    for expression in non_realizable:
+        broken.append({"expression": expression, "case_id": None, "ratio": None,
+                       "reason": "non_realizable"})
     best_by_expr: dict[str, dict] = {}
     for item in collected_fits:
         expression = str(item["expression"])
+        if expression in non_realizable:
+            continue
         prev = best_by_expr.get(expression)
         if prev is None:
             best_by_expr[expression] = item
