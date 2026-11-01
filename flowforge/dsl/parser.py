@@ -6,6 +6,13 @@ MAX_NODES = MAX_COMPLEXITY
 _ALLOWED_FUNCS = {"tanh": sp.tanh, "exp": sp.exp}
 _TENSOR_SET = set(TENSORS)
 _INVARIANT_SET = set(INVARIANTS)
+# I3..I5 carry no independent information in 2-D flows (I3, I4 rms ~1e-5
+# noise; I5 = I1*I2/2 to 1e-16 on train data): same overfitting door as T4.
+_REJECTED_INVARIANTS = {
+    INVARIANTS[2]: "~0 in 2-D flows (rms ~1e-5, numerical noise on train data)",
+    INVARIANTS[3]: "~0 in 2-D flows (rms ~1e-5, numerical noise on train data)",
+    INVARIANTS[4]: "redundant in 2-D flows (I5 = I1*I2/2 to 1e-16 on train data)",
+}
 
 def _locals() -> dict:
     local = {str(s): s for s in INVARIANTS}
@@ -29,7 +36,10 @@ def _safe_div(a, b):
 def _validate_tree(expr: sp.Expr, text: str) -> None:
     unknown = expr.free_symbols - _INVARIANT_SET - _TENSOR_SET
     if unknown:
-        raise ValueError(f"Unknown symbols {sorted(map(str, unknown))} in {text!r}; only I1..I5, T1..T3 allowed")
+        raise ValueError(f"Unknown symbols {sorted(map(str, unknown))} in {text!r}; only I1, I2, T1..T3 allowed")
+    for sym, reason in _REJECTED_INVARIANTS.items():
+        if sym in expr.free_symbols:
+            raise ValueError(f"{sym} is rejected: {reason}; use I1, I2 in {text!r}")
     if TENSORS[3] in expr.free_symbols:
         raise ValueError(
             f"T4 is rejected: redundant in 2-D flows (in the span of T1..T3 "

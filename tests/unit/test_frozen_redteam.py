@@ -16,6 +16,7 @@ def _setup(monkeypatch, tmp_path):
     monkeypatch.setattr(round_mod, "ATTACKS_DIR", tmp_path / "attacks")
     monkeypatch.setattr(frozen_fields, "train_case_ids", lambda root=None: ["train_stub"])
     monkeypatch.setattr(frozen_fields, "validation_case_ids", lambda root=None: ["val_stub"])
+    monkeypatch.setattr(frozen_fields, "redteam_case_ids", lambda root=None: ["rt_stub"])
     monkeypatch.setattr(frozen_fields, "load_frozen_fields", lambda c, processed_dir="data/processed", max_points_per_case=None, seed=0: (inv0, basis0, target0))
     avail = [{"kind": "periodic_hill", "alpha": 0.5, "reynolds": 5600, "case_id": "attack_a"}]
     monkeypatch.setattr(frozen_fields, "available_attack_flows", lambda processed_dir="data/processed": [dict(avail[0])])

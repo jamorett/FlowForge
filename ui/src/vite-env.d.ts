@@ -4,6 +4,7 @@ declare module "plotly.js-dist-min" {
     newPlot: (el: HTMLElement, data: unknown[], layout?: Record<string, unknown>) => Promise<void>;
     react: (el: HTMLElement, data: unknown[], layout?: Record<string, unknown>) => Promise<void>;
     purge: (el: HTMLElement) => void;
+    restyle: (el: HTMLElement, update: Record<string, unknown>, traces?: number[]) => Promise<void>;
   };
   export default Plotly;
 }

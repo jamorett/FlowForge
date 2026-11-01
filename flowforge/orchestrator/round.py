@@ -216,41 +216,70 @@ def _save_frozen_break(case_id: str, expression: str, ratio: float, flow: dict |
         logger.warning("persist frozen attack failed: %s", exc)
 
 
-def select_champion_by_validation(finalists: list[dict]) -> dict | None:
-    """Pick the round champion by worst-case *validation* ratio (frozen).
+def select_champion_by_train_attack(
+    finalists: list[dict],
+    invariants: dict[str, np.ndarray],
+    basis: dict[str, np.ndarray],
+    target: np.ndarray,
+    attack_cases: list[str] | None = None,
+) -> dict | None:
+    """Pick the round champion by train + attack worst-case ratio.
 
-    Each finalist is scored on the validation cases; the worst (max) ratio
-    is its error, and :func:`pick_champion` applies the 3% elegance margin
-    with description-length tie-break. Finalists whose validation cannot be
-    scored get ``inf`` so they lose to any scored finalist. Returns
-    ``{"expression", "dl", "worst_error", "selection_metric"}`` or ``None``
-    when the pool is empty. Mock mode keeps its own train-based selection.
+    Selection uses ``max(train_ratio, attack_ratios)`` only; validation is
+    never consulted so it stays held-out for reporting. Within 3% of the
+    best selection ratio, :func:`pick_champion` applies the elegance /
+    description-length tie-break. Candidates that cannot be scored get
+    ``inf`` so they lose to any scored finalist. Returns
+    ``{"expression", "dl", "worst_error", "selection_ratio",
+    "selection_metric"}`` or ``None`` when the pool is empty.
     """
-    from flowforge.data.frozen_fields import score_on_cases, validation_case_ids, worst_ratio
+    from flowforge.data.frozen_fields import score_expression, score_on_cases
     from flowforge.dsl.parser import complexity, validate_candidate
     from flowforge.elegance.engine import description_length, pick_champion
 
     if not finalists:
         return None
+    attack_ids = list(attack_cases) if attack_cases else []
     enriched: list[dict] = []
     for item in finalists:
         expression = str(item.get("expression", ""))
         validate_candidate(expression)
         try:
-            vscores = score_on_cases(expression, validation_case_ids())
-            vratio = worst_ratio(vscores)
-        except (ValueError, KeyError, AssertionError) as exc:
-            logger.warning("champion validation scoring failed for %s: %s", expression, exc)
-            vratio = None
+            train_payload = score_expression(expression, invariants, basis, target)
+            train_ratio = float(train_payload.get("ratio"))
+            if np.isnan(train_ratio):
+                raise ValueError("NaN train ratio")
+        except (TypeError, ValueError, KeyError, AssertionError) as exc:
+            logger.warning("champion train scoring failed for %s: %s", expression, exc)
+            train_ratio = float("inf")
+        selection = float(train_ratio)
+        if attack_ids and np.isfinite(selection):
+            attack_scores = score_on_cases(expression, attack_ids, max_points_per_case=4000)
+            for case_id in attack_ids:
+                payload = attack_scores.get(case_id, {})
+                if not isinstance(payload, dict) or "error" in payload:
+                    continue
+                try:
+                    attack_ratio = float(payload.get("ratio"))
+                except (TypeError, ValueError):
+                    logger.warning("champion attack bad ratio %s on %s", expression, case_id)
+                    continue
+                if np.isnan(attack_ratio):
+                    logger.warning("champion attack NaN ratio %s on %s", expression, case_id)
+                    selection = float("inf")
+                    break
+                if attack_ratio > selection:
+                    selection = float(attack_ratio)
         enriched.append({
             "id": expression,
-            "worst_error": float(vratio) if vratio is not None else float("inf"),
+            "worst_error": float(selection),
             "dl": description_length(complexity(validate_candidate(expression)), []),
         })
     best = pick_champion(enriched)
     return {"expression": best["id"], "dl": best["dl"],
-            "worst_error": best["worst_error"],
-            "selection_metric": "worst_validation_ratio"}
+            "worst_error": float(best["worst_error"]),
+            "selection_ratio": float(best["worst_error"]),
+            "selection_metric": "max(train_ratio, attack_ratios)"}
 
 
 def _run_round_live(round_no: int, candidates: tuple[str, ...],
@@ -282,6 +311,7 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
         attack_case_for,
         available_attack_flows,
         load_frozen_fields,
+        redteam_case_ids,
         score_expression,
         score_on_cases,
         train_case_ids,
@@ -480,11 +510,14 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
                 attack_cases.append(cid)
                 if isinstance(spec, dict):
                     case_flow[cid] = spec
-        # Probe set: red-team attack hills plus the held-out validation
-        # cases (never train cases). Break = worse than SST anywhere.
+        # Probe set: red-team attack hills plus the redteam split
+        # (never train/validation/locked). Break = worse than SST anywhere.
+        from flowforge.config import EXPECTED_LOCKED_CASES
+
+        excluded = set(_train_cases) | set(validation_case_ids()) | set(EXPECTED_LOCKED_CASES)
         probe_cases: list[str] = []
-        for cid in list(attack_cases) + list(validation_case_ids()):
-            if cid not in probe_cases and cid not in _train_cases:
+        for cid in list(attack_cases) + list(redteam_case_ids()):
+            if cid not in probe_cases and cid not in excluded:
                 probe_cases.append(cid)
         for item in rung1:
             expr = item.get("expression", "")
@@ -612,10 +645,14 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
         else:
             all_broken = True
     if champion_pool:
-        # Champion by worst-case VALIDATION ratio (frozen), not train error:
-        # the train-best finalist is often the validation-worst (pilot RP1).
-        champion = select_champion_by_validation(champion_pool)
+        # Selection uses train + attack only; validation stays held-out
+        # (reported below but never read for selection to avoid leakage).
+        champion = select_champion_by_train_attack(
+            champion_pool, inv, basis, target,
+            attack_cases=attack_cases if redteam else [],
+        )
     if champion is not None:
+        # Validation is held-out: computed for reporting only, never for selection.
         champion_expression = str(champion.get("expression", ""))
         train_score = score_expression(champion_expression, inv, basis, target)
         validation_scores = score_on_cases(champion_expression, validation_case_ids())

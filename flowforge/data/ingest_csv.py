@@ -27,7 +27,7 @@ CASE_MAPPING = {
     # case_1p5 is the alpha=1.5 hill (L=10.93) at Re_h 5600; the dataset has no Re 10595 hill.
     "periodic_hill_alpha1p5_re5600": ("case_1p5", "data/processed/periodic_hill_alpha1p5_re5600", "train"),
     "curved_step": ("cbfs13700", "data/processed/curved_step", "validation"),
-    "converging_diverging_channel": ("convdiv12600", "data/processed/converging_diverging_channel", "validation"),
+    "converging_diverging_channel": ("convdiv12600", "data/processed/converging_diverging_channel", "redteam"),
     "square_duct": ("squareDuctAve_Re_2205", "data/locked/square_duct", "locked"),
 }
 

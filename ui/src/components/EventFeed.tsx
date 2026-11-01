@@ -22,13 +22,13 @@ const ROLE_COLORS: Record<string, { bg: string; text: string; border: string }> 
   champion: { bg: "bg-yellow-950/60", text: "text-yellow-300", border: "border-yellow-700/50" },
 };
 
-export function EventFeed({ session = "default" }: { session?: string }) {
+export function EventFeed({ session = "default", backlog = "instant" }: { session?: string; backlog?: "instant" | "paced" }) {
   const [events, setEvents] = useState<EventItem[]>([]);
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const ws = eventsSocket(session);
+    const ws = eventsSocket(session, backlog);
     ws.onmessage = (ev) => {
       const raw = String(ev.data);
       let parsed: Record<string, any> | undefined;

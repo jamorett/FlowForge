@@ -9,7 +9,7 @@ import numpy as np
 
 __all__ = ["evaluate_sparse_baseline", "fit_sparse_baseline"]
 
-_FEATURE_NAMES = ("1", "I1", "I2", "I3", "I4", "I5", "I1*I2", "tanh(I1)", "tanh(I2)")
+_FEATURE_NAMES = ("1", "I1", "I2", "I1*I2", "tanh(I1)", "tanh(I2)")
 _TENSOR_NAMES = ("T1", "T2", "T3")
 _ALPHA_GRID = (1e-6, 1e-5, 1e-4, 1e-3, 1e-2)
 _N_FOLDS = 3
@@ -18,7 +18,8 @@ _N_COMPONENTS = 9
 # scalar features duplicating an earlier one with |corr > threshold| are
 # removed from the library. 0.999 keeps tanh() on unit-scale synthetic data
 # (corr ~0.998) but drops it on real frozen-RANS data where tanh(I) == I to
-# 1e-6 (corr > 0.999999), along with I1*I2 which duplicates I5 exactly.
+# 1e-6 (corr > 0.999999). I3..I5 stay out of the library (I3, I4 ~ 0 and
+# I5 = I1*I2/2 in 2-D, same symbol set as the DSL).
 _COLLINEARITY_THRESHOLD = 0.999
 
 

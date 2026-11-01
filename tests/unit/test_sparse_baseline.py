@@ -98,14 +98,14 @@ def test_recovers_terms_with_different_scales():
 
     invariants, basis = synthetic_fields(n=400, seed=7)
     scaled = dict(invariants)
-    scaled["I4"] = np.asarray(invariants["I4"], dtype=float) * 0.005
-    expression_true = "0.5 * T3 + 100.0 * I4 * T1"
+    scaled["I1"] = np.asarray(invariants["I1"], dtype=float) * 0.005
+    expression_true = "0.5 * T3 + 100.0 * I1 * T1"
     target = candidate_anisotropy(expression_true, scaled, basis)
     result = fit_sparse_baseline(scaled, basis, target, max_terms=4, seed=42)
     assert result["train"]["ratio"] < 0.05
     pairs = {(term["feature"], term["tensor"]) for term in result["terms"]}
     assert ("1", "T3") in pairs
-    assert ("I4", "T1") in pairs
+    assert ("I1", "T1") in pairs
     assert len(result["terms"]) <= 4
 
 
@@ -143,7 +143,7 @@ def test_no_drop_on_independent_synthetic_features():
     invariants, _ = synthetic_fields(n=400, seed=7)
     kept, dropped = collinearity_dropped_features(invariants)
     assert dropped == []
-    assert kept == ["1", "I1", "I2", "I3", "I4", "I5", "I1*I2", "tanh(I1)", "tanh(I2)"]
+    assert kept == ["1", "I1", "I2", "I1*I2", "tanh(I1)", "tanh(I2)"]
 
 
 def test_collinear_tanh_duplicates_dropped_on_small_invariants():

@@ -10,7 +10,7 @@ cases:
     split: validation
     source: curated
   - id: converging_diverging_channel
-    split: validation
+    split: redteam  # moved from validation 2026-11-01, see docs/history/decisions.md
     source: curated
   - id: square_duct
     split: locked

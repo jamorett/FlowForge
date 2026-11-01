@@ -59,7 +59,7 @@ export function Replay({ session = "round-1" }: { session?: string }) {
       </div>
 
       {/* Stream Viewer */}
-      <EventFeed session={activeSession} />
+      <EventFeed session={activeSession} backlog="paced" />
     </section>
   );
 }

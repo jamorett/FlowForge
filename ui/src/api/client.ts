@@ -2,20 +2,44 @@
 export interface SessionState { session: string; exists: boolean; event_count: number; event_types: Record<string, number>; pace_seconds: number; events_per_second: number }
 export interface MatrixData { session: string; candidates: string[]; flows: { train: string[]; generated: { flow: string; alpha: number; reynolds: number; split: string }[]; locked: string[] }; locked_greyed: boolean; cells: { candidate: string; flow: string; error: number | null; split: string }[] }
 
-const base = import.meta.env.VITE_API ?? "http://localhost:8000";
+// Default: same origin, forwarded to the API by the Vite dev proxy (vite.config.ts), so the UI
+// works on any dev port without CORS. Set VITE_API to call an API directly instead.
+const base = import.meta.env.VITE_API ?? "";
 export async function fetchSessionState(session = "default"): Promise<SessionState> {
   const r = await fetch(`${base}/api/session/state?session=${encodeURIComponent(session)}`);
   if (!r.ok) throw new Error(`session state ${r.status}`);
   return r.json() as Promise<SessionState>;
+}
+export interface LumleyXY { x: number[]; y: number[] }
+export interface PhysicsView { case: string; expression: string; n: number; ratio: number | null;
+  rans: LumleyXY; dns: LumleyXY; corrected: LumleyXY; geometry: { x: number[]; y: number[]; gain: number[] }; error?: string }
+export async function fetchPhysicsCases(): Promise<Record<string, string[]>> {
+  const r = await fetch(`${base}/api/physics_cases`);
+  if (!r.ok) throw new Error(`physics cases ${r.status}`);
+  return r.json() as Promise<Record<string, string[]>>;
+}
+export async function fetchPhysicsView(expression: string, caseId: string): Promise<PhysicsView> {
+  const r = await fetch(`${base}/api/physics_view?expression=${encodeURIComponent(expression)}&case=${encodeURIComponent(caseId)}`);
+  if (!r.ok) throw new Error(`physics view ${r.status}`);
+  return r.json() as Promise<PhysicsView>;
+}
+export interface SessionInfo { session: string; events: number; modified: number }
+export async function fetchSessions(): Promise<SessionInfo[]> {
+  const r = await fetch(`${base}/api/sessions`);
+  if (!r.ok) throw new Error(`sessions ${r.status}`);
+  return r.json() as Promise<SessionInfo[]>;
 }
 export async function fetchMatrix(session = "default"): Promise<MatrixData> {
   const r = await fetch(`${base}/api/matrix?session=${encodeURIComponent(session)}`);
   if (!r.ok) throw new Error(`matrix ${r.status}`);
   return r.json() as Promise<MatrixData>;
 }
-export function eventsSocket(session = "default"): WebSocket {
-  const wsBase = base.replace(/^http/, "ws");
-  return new WebSocket(`${wsBase}/ws/events?session=${encodeURIComponent(session)}`);
+// backlog "instant": history arrives at once (live view); "paced": ~20/s animation (Replay).
+export function eventsSocket(session = "default", backlog: "instant" | "paced" = "instant"): WebSocket {
+  const wsBase = base
+    ? base.replace(/^http/, "ws")
+    : `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}`;
+  return new WebSocket(`${wsBase}/ws/events?session=${encodeURIComponent(session)}&backlog=${backlog}`);
 }
 export interface RegionsData { image: string | null; source: string; model: string | null; regions: { region: string; box: number[]; max_error?: number; mean_error?: number; severity?: string; source?: string }[]; detail: string }
 export interface StartRoundResult { status: string; session?: string; mock?: boolean; events?: string; reason?: string }

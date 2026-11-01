@@ -58,7 +58,7 @@ def test_redteam_excludes_broken_rung1_survivor(tmp_path: Path, monkeypatch: pyt
         return inv0, basis0, target0
 
     def fake_attack_case_for(spec):
-        return "val_a"
+        return "rt_a"
 
     def fake_score_cases(expression, case_ids, processed_dir="data/processed",
                          max_points_per_case=None, seed=0):
@@ -70,8 +70,12 @@ def test_redteam_excludes_broken_rung1_survivor(tmp_path: Path, monkeypatch: pyt
         return {cid: {"mse": ratio, "mse_zero": 1.0, "ratio": ratio,
                       "n_used": 8, "n_excluded": 0} for cid in case_ids}
 
+    def fake_redteam_ids(root=None) -> list[str]:
+        return ["rt_a"]
+
     monkeypatch.setattr(frozen_fields, "train_case_ids", fake_train_ids)
     monkeypatch.setattr(frozen_fields, "validation_case_ids", fake_validation_ids)
+    monkeypatch.setattr(frozen_fields, "redteam_case_ids", fake_redteam_ids)
     monkeypatch.setattr(frozen_fields, "load_frozen_fields", fake_load)
     monkeypatch.setattr(frozen_fields, "attack_case_for", fake_attack_case_for)
     monkeypatch.setattr(frozen_fields, "score_on_cases", fake_score_cases)
@@ -121,6 +125,7 @@ def test_redteam_ablation_skips_exclusion(tmp_path: Path, monkeypatch: pytest.Mo
 
     monkeypatch.setattr(frozen_fields, "train_case_ids", fake_train_ids)
     monkeypatch.setattr(frozen_fields, "validation_case_ids", fake_validation_ids)
+    monkeypatch.setattr(frozen_fields, "redteam_case_ids", lambda root=None: ["rt_a"])
     monkeypatch.setattr(frozen_fields, "load_frozen_fields", fake_load)
     monkeypatch.setattr(frozen_fields, "score_on_cases", fake_score_cases)
     monkeypatch.setattr(dispatcher, "dispatch_role",

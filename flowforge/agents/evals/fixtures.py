@@ -110,5 +110,5 @@ SYMBOLIC_FIXTURES: list[SymbolicFixture] = [
     # Negative
     SymbolicFixture("I1 +", False, "Invalid AST trailing operator"),
     SymbolicFixture("I1 / I2", False, "Unprotected raw division"),
-    SymbolicFixture("I1 + I2 + I3 + I4 + I5 + I1*I2 + I2*I3 + I3*I4 + I4*I5 + I1*I3 + I2*I4 + I1*I5 + I1**2 + I2**2 + I3**2 + I4**2 + I5**2", False, "Complexity exceeds 25 node cap"),
+    SymbolicFixture("I1 + I2 + I1 + I2 + I1 + I2 + I1 + I2 + I1 + I2 + I1 + I2 + I1 + I2 + I1 + I2 + I1 + I2 + I1 + I2 + I1 + I2 + I1 + I2 + I1 + I2 + I1 + I2 + I1 + I2", False, "Complexity exceeds 25 node cap"),
 ]

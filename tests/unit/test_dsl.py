@@ -49,7 +49,7 @@ def test_t4_rejected_as_redundant_in_2d() -> None:
 def test_complexity_cap_and_safe_ops() -> None:
     with pytest.raises(ValueError):
         validate_candidate(" + ".join(["I1"] * 30))
-    expr = parse_expression("div(I1, I2) + sqrt(I3) + exp(-I4)")
+    expr = parse_expression("div(I1, I2) + sqrt(I1) + exp(-I2)")
     assert complexity(expr) > 0
 
 

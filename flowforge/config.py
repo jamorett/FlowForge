@@ -29,7 +29,7 @@ __all__ = [
 
 EXPECTED_LOCKED_CASES = frozenset({"square_duct", "nasa_wall_mounted_hump"})
 
-_ALLOWED_SPLITS = frozenset({"train", "validation", "locked"})
+_ALLOWED_SPLITS = frozenset({"train", "validation", "locked", "redteam"})
 _ALLOWED_MODES = frozenset({"short", "full"})
 
 _TOLERANCE_KEYS = (

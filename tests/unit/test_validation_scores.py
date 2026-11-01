@@ -115,60 +115,6 @@ def test_score_on_cases_permission_propagates(monkeypatch: pytest.MonkeyPatch) -
         frozen_fields.score_on_cases("0", ["any_case"], processed_dir="data/processed")
 
 
-def test_champion_prefers_validation_over_train(monkeypatch: pytest.MonkeyPatch) -> None:
-    from flowforge.data import frozen_fields
-    from flowforge.orchestrator.round import select_champion_by_validation
-
-    def fake_ids(root=None) -> list[str]:
-        return ["val_a"]
-
-    def fake_scores(expression, case_ids, processed_dir="data/processed",
-                    max_points_per_case=None, seed=0):
-        # "0.9" wins on train (score 0.1) but loses on validation.
-        ratio = 2.0 if expression == "0.9" else 0.5
-        return {cid: {"mse": ratio, "mse_zero": 1.0, "ratio": ratio,
-                      "n_used": 8, "n_excluded": 0} for cid in case_ids}
-
-    monkeypatch.setattr(frozen_fields, "validation_case_ids", fake_ids)
-    monkeypatch.setattr(frozen_fields, "score_on_cases", fake_scores)
-    champ = select_champion_by_validation([
-        {"expression": "0.9", "score": 0.1},
-        {"expression": "0.5", "score": 0.9},
-    ])
-    assert champ is not None
-    assert champ["expression"] == "0.5"
-    assert champ["worst_error"] == pytest.approx(0.5)
-    assert champ["selection_metric"] == "worst_validation_ratio"
-    assert champ["dl"] > 0
-
-
-def test_champion_all_validation_errors_still_picks(monkeypatch: pytest.MonkeyPatch) -> None:
-    from flowforge.data import frozen_fields
-    from flowforge.orchestrator.round import select_champion_by_validation
-
-    def fake_ids(root=None) -> list[str]:
-        return ["val_a"]
-
-    def fake_scores(expression, case_ids, **kwargs):
-        return {cid: {"error": "boom"} for cid in case_ids}
-
-    monkeypatch.setattr(frozen_fields, "validation_case_ids", fake_ids)
-    monkeypatch.setattr(frozen_fields, "score_on_cases", fake_scores)
-    champ = select_champion_by_validation([
-        {"expression": "0.5 * I1 + 0.25 * I2", "score": 0.1},
-        {"expression": "0.5", "score": 0.9},
-    ])
-    assert champ is not None
-    assert champ["worst_error"] == float("inf")
-    # All unscored: falls back to simplest (min DL), never crashes.
-    assert champ["expression"] == "0.5"
-
-
-def test_select_champion_empty_pool() -> None:
-    from flowforge.orchestrator.round import select_champion_by_validation
-    assert select_champion_by_validation([]) is None
-
-
 def test_live_champion_gets_validation_scores(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from flowforge.agents import dispatcher
     from flowforge.data import frozen_fields

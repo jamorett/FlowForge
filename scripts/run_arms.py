@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import itertools
 import json
+import math
 import statistics
 import sys
 from pathlib import Path
@@ -23,6 +25,8 @@ SEEDS = (42, 43, 44)
 SWARM_ARMS = ("swarm", "swarm_no_redteam")
 FROZEN_MODE = "frozen"
 FROZEN_METRIC = "worst_validation_ratio (lower is better)"
+COMPARISON_METRIC = "worst_validation_ratio"
+COMPARISON_PAIRS = (("swarm", "swarm_no_redteam"), ("swarm", "sparse_baseline"))
 
 
 def summarize(results: list[float]) -> dict:
@@ -48,6 +52,120 @@ def mann_whitney_u(a: list[float], b: list[float]) -> float:
             elif ai == bi:
                 u += 0.5
     return float(u)
+
+
+def mann_whitney_exact_p(a: list[float], b: list[float]) -> float:
+    """Exact one-sided p-value for H1 that ``a`` tends to be lower than ``b``.
+
+    Lower ``worst_validation_ratio`` is better, so large U supports H1.
+    Enumerates every split of the pooled values into groups of ``len(a)``
+    and ``len(b)`` and counts splits whose U (as ``mann_whitney_u``
+    computes it) is >= the observed U.
+    """
+    observed = mann_whitney_u(a, b)
+    pooled = list(a) + list(b)
+    size_a = len(a)
+    total = 0
+    extreme = 0
+    for combo in itertools.combinations(range(len(pooled)), size_a):
+        picked = set(combo)
+        group_a = [pooled[idx] for idx in combo]
+        group_b = [pooled[idx] for idx in range(len(pooled)) if idx not in picked]
+        stat = mann_whitney_u(group_a, group_b)
+        total += 1
+        if stat >= observed:
+            extreme += 1
+    if total == 0:
+        return 1.0
+    return float(extreme) / float(total)
+
+
+def comparison_p_min(n1: int, n2: int) -> float:
+    """Return the smallest achievable one-sided p for sizes n1 and n2."""
+    return 1.0 / float(math.comb(n1 + n2, n1))
+
+
+def arm_metrics(arms_output: dict, arm: str) -> list[float] | None:
+    """Return the complete metric list for an arm, else None."""
+    info = arms_output.get(arm)
+    if not isinstance(info, dict):
+        return None
+    rows = info.get("seeds")
+    if not isinstance(rows, list) or not rows:
+        return None
+    metrics: list[float] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            return None
+        value = row.get("metric")
+        if value is None:
+            return None
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return None
+        if math.isnan(number):
+            return None
+        metrics.append(number)
+    return metrics
+
+
+def unavailable_comparison(first: str, second: str, reason: str) -> dict:
+    """Return an unavailable comparison entry for two arms."""
+    return {
+        "available": False,
+        "reason": reason,
+        "metric": COMPARISON_METRIC,
+        "arms": [first, second],
+    }
+
+
+def build_comparison(first: str, second: str, arms_output: dict) -> dict:
+    """Build one RP comparison dict for two arms.
+
+    When both arms have complete metrics the entry reports ``u``,
+    ``p_one_sided``, ``p_min``, per-arm ``n`` and ``metric``;
+    otherwise it reports ``available`` False with a reason.
+    """
+    first_metrics = arm_metrics(arms_output, first)
+    if first_metrics is None:
+        return unavailable_comparison(first, second, f"{first} metrics incomplete")
+    second_metrics = arm_metrics(arms_output, second)
+    if second_metrics is None:
+        return unavailable_comparison(first, second, f"{second} metrics incomplete")
+    stat = mann_whitney_u(first_metrics, second_metrics)
+    p_value = mann_whitney_exact_p(first_metrics, second_metrics)
+    p_floor = comparison_p_min(len(first_metrics), len(second_metrics))
+    counts = {first: len(first_metrics), second: len(second_metrics)}
+    return {
+        "available": True,
+        "metric": COMPARISON_METRIC,
+        "arms": [first, second],
+        "u": float(stat),
+        "p_one_sided": float(p_value),
+        "p_min": float(p_floor),
+        "n1": len(first_metrics),
+        "n2": len(second_metrics),
+        "n": dict(counts),
+    }
+
+
+def build_comparisons(arms_output: dict) -> dict:
+    """Build the RP1/RP2 comparisons dict for the arms output."""
+    comparisons: dict = {}
+    labels = {
+        ("swarm", "swarm_no_redteam"): "RP1",
+        ("swarm", "sparse_baseline"): "RP2",
+    }
+    for pair in COMPARISON_PAIRS:
+        first, second = pair
+        key = f"{first}_vs_{second}"
+        entry = build_comparison(first, second, arms_output)
+        label = labels.get(pair)
+        if label is not None:
+            entry["label"] = label
+        comparisons[key] = entry
+    return comparisons
 
 
 def parse_seed_list(text: str) -> list[int]:
@@ -132,6 +250,105 @@ def round_cost(result: dict) -> float:
         return 0.0
 
 
+def parse_train_number(value: object) -> float | None:
+    """Coerce a train-side value to float, else None."""
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    if math.isnan(parsed):
+        return None
+    return parsed
+
+
+def champion_train_score(champion: dict) -> float | None:
+    """Return the train-side selection score for a champion.
+
+    Uses only train/attack data, never validation numbers. Prefers
+    ``train_ratio`` / ``train.ratio``, then other numeric ``train``
+    payloads, then the mean of ``attack_ratios``.
+    """
+    if not isinstance(champion, dict):
+        return None
+    score = parse_train_number(champion.get("train_ratio"))
+    if score is not None:
+        return score
+    train = champion.get("train")
+    if isinstance(train, dict):
+        for key in ("ratio", "train_ratio", "mse", "mse_after", "score"):
+            score = parse_train_number(train.get(key))
+            if score is not None:
+                return score
+    elif train is not None:
+        score = parse_train_number(train)
+        if score is not None:
+            return score
+    for key in ("train_mse", "train_score"):
+        score = parse_train_number(champion.get(key))
+        if score is not None:
+            return score
+    attack = champion.get("attack_ratios")
+    if isinstance(attack, dict) and attack:
+        values: list[float] = []
+        for value in attack.values():
+            parsed = parse_train_number(value)
+            if parsed is not None:
+                values.append(parsed)
+        if values:
+            return sum(values) / len(values)
+    return parse_train_number(champion.get("attack_ratio"))
+
+
+def round_train_score(result: dict) -> float | None:
+    """Return the train-side score for a round result, or None."""
+    if not isinstance(result, dict):
+        return None
+    if result.get("status") == "error":
+        return None
+    champion = result.get("champion")
+    if not isinstance(champion, dict):
+        return None
+    return champion_train_score(champion)
+
+
+def select_seed_champion(
+    round_results: list[tuple[int, dict]],
+) -> tuple[float | None, str | None, int | None, bool]:
+    """Pick the seed champion from collected round results.
+
+    Uses the last round champion when usable; otherwise falls back to the
+    earlier round with the best train-side score. The returned metric is
+    always the champion ``worst_validation_ratio``.
+    """
+    if not round_results:
+        return (None, None, None, False)
+    last_no, last_result = round_results[-1]
+    last_metric = round_metric(last_result)
+    if last_metric is not None:
+        return (last_metric, round_expression(last_result), int(last_no), False)
+    best_metric: float | None = None
+    best_expression: str | None = None
+    best_round: int | None = None
+    best_score: float | None = None
+    for round_no, result in round_results[:-1]:
+        metric = round_metric(result)
+        if metric is None:
+            continue
+        score = round_train_score(result)
+        if score is None:
+            continue
+        if best_score is None or score < best_score:
+            best_score = score
+            best_metric = metric
+            best_expression = round_expression(result)
+            best_round = int(round_no)
+    if best_round is not None:
+        return (best_metric, best_expression, best_round, True)
+    return (None, None, None, False)
+
+
 def baseline_metric(baseline: dict) -> float | None:
     """Return worst_validation_ratio from a sparse baseline result."""
     if not isinstance(baseline, dict):
@@ -164,7 +381,7 @@ def collect_swarm_arm(arm: str, seeds: list[int], rounds: int, groups: int,
     for seed in seeds:
         session = f"arms-{arm}-s{seed}"
         seed_cost = 0.0
-        last_result: dict | None = None
+        round_results: list[tuple[int, dict]] = []
         completed = 0
         for round_no in range(1, int(rounds) + 1):
             if spent[0] > float(budget_usd):
@@ -173,24 +390,29 @@ def collect_swarm_arm(arm: str, seeds: list[int], rounds: int, groups: int,
             result = round_module.run_round(
                 round_no, mock=False, groups=groups,
                 session=session, redteam=want_redteam)
-            last_result = result
+            round_results.append((round_no, result))
             completed += 1
             cost = round_cost(result)
             spent[0] += cost
             seed_cost += cost
-        if last_result is None:
+        if not round_results:
             metric: float | None = None
             expression: str | None = None
+            champion_round: int | None = None
+            fallback = False
             if spent[0] > float(budget_usd):
                 incomplete[0] = True
         else:
-            metric = round_metric(last_result)
-            expression = round_expression(last_result)
+            metric, expression, champion_round, fallback = select_seed_champion(round_results)
             if completed < int(rounds):
                 incomplete[0] = True
-        rows.append(make_seed_row(seed, metric, expression, session, seed_cost, dry_run))
+        row = make_seed_row(seed, metric, expression, session, seed_cost, dry_run)
+        row["champion_round"] = champion_round
+        row["fallback"] = bool(fallback)
+        rows.append(row)
     metrics = [row["metric"] for row in rows if row["metric"] is not None]
-    return {"seeds": rows, "summary": summarize_or_none(metrics), "dry_run": bool(dry_run)}
+    complete = len(metrics) == len(rows) and len(rows) > 0
+    return {"seeds": rows, "summary": summarize_or_none(metrics), "dry_run": bool(dry_run), "complete": bool(complete)}
 
 
 def collect_sparse_arm(seeds: list[int], dry_run: bool) -> dict:
@@ -279,6 +501,7 @@ def main(argv: list[str] | None = None) -> dict | None:
             arms_output[arm] = collect_swarm_arm(
                 arm, seeds, rounds, groups, budget_usd, dry_run, spent, incomplete)
         arms_output["sparse_baseline"] = collect_sparse_arm(seeds, dry_run)
+        comparisons = build_comparisons(arms_output)
         output = {
             "mode": FROZEN_MODE,
             "metric": FROZEN_METRIC,
@@ -290,6 +513,7 @@ def main(argv: list[str] | None = None) -> dict | None:
             "incomplete": bool(incomplete[0]),
             "dry_run": bool(dry_run),
             "arms": arms_output,
+            "comparisons": comparisons,
         }
     finally:
         if dry_run:

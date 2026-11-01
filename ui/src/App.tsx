@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { fetchSessions, type SessionInfo } from "./api/client";
 import { CandidateInspector } from "./pages/CandidateInspector";
 import { GeneralizationMatrix } from "./pages/GeneralizationMatrix";
 import { MissionControl } from "./pages/MissionControl";
+import { PhysicsView } from "./pages/PhysicsView";
 import { Replay } from "./pages/Replay";
 import { Vault } from "./pages/Vault";
 
@@ -9,6 +11,7 @@ const VIEWS = [
   { id: "Mission Control", icon: "⚡", label: "Mission Control" },
   { id: "Generalization Matrix", icon: "▦", label: "Generalization Matrix" },
   { id: "Candidate Inspector", icon: "∫", label: "Candidate Inspector" },
+  { id: "Physics View", icon: "△", label: "Physics View" },
   { id: "Vault", icon: "🔒", label: "Locked Vault" },
   { id: "Replay", icon: "↺", label: "Replay & Scrubber" },
 ] as const;
@@ -18,6 +21,17 @@ type ViewId = (typeof VIEWS)[number]["id"];
 export function App() {
   const [view, setView] = useState<ViewId>("Mission Control");
   const [session, setSession] = useState("round-1");
+  const [sessions, setSessions] = useState<SessionInfo[]>([]);
+
+  // Offer the real sessions under runs/ and start on the newest one.
+  useEffect(() => {
+    fetchSessions()
+      .then((list) => {
+        setSessions(list);
+        if (list.length) setSession(list[0].session);
+      })
+      .catch(() => setSessions([]));
+  }, []);
 
   return (
     <div className="min-h-screen text-neutral-100 flex flex-col">
@@ -48,10 +62,16 @@ export function App() {
               <span className="text-neutral-400">Session:</span>
               <input
                 type="text"
+                list="flowforge-sessions"
                 value={session}
                 onChange={(e) => setSession(e.target.value)}
-                className="bg-transparent text-cyan-300 font-mono text-xs focus:outline-none w-24 border-b border-cyan-500/30"
+                className="bg-transparent text-cyan-300 font-mono text-xs focus:outline-none w-44 border-b border-cyan-500/30"
               />
+              <datalist id="flowforge-sessions">
+                {sessions.map((s) => (
+                  <option key={s.session} value={s.session}>{`${s.events} events`}</option>
+                ))}
+              </datalist>
             </div>
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
@@ -89,6 +109,7 @@ export function App() {
           {view === "Mission Control" && <MissionControl session={session} />}
           {view === "Generalization Matrix" && <GeneralizationMatrix session={session} />}
           {view === "Candidate Inspector" && <CandidateInspector session={session} />}
+          {view === "Physics View" && <PhysicsView session={session} />}
           {view === "Vault" && <Vault />}
           {view === "Replay" && <Replay session={session} />}
         </main>

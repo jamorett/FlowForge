@@ -92,6 +92,81 @@ def health() -> dict:
     return {"status": "ok"}
 
 
+@app.get("/api/physics_cases")
+def physics_cases() -> dict:
+    """Cases the physics view may show: train, validation, red-team cases and attack hills (never locked)."""
+    from flowforge.data.frozen_fields import (
+        available_attack_flows,
+        redteam_case_ids,
+        train_case_ids,
+        validation_case_ids,
+    )
+
+    return {"train": train_case_ids(), "validation": validation_case_ids(),
+            "redteam": redteam_case_ids(),
+            "attack": [f["case_id"] for f in available_attack_flows()]}
+
+
+@app.get("/api/physics_view")
+def physics_view(expression: str = "0", case: str = "periodic_hill_re5600", n: int = 1500) -> dict:
+    """Lumley-triangle states of one case: RANS, DNS and RANS + candidate correction, plus where on
+    the geometry the correction helps. A-priori (frozen) data only; locked cases are refused by the
+    swarm guard like any other non-evaluator read."""
+    import numpy as np
+
+    from flowforge.data.split_guard import guard_swarm_path
+    from flowforge.data.zarr_store import read_case
+    from flowforge.dsl.evaluate import candidate_anisotropy
+    from flowforge.physics.tensors import barycentric_coords
+
+    if not _SAFE_SESSION.match(case):
+        return {"error": "invalid case id"}
+    path = guard_swarm_path(Path("data/processed") / case, role="ui")
+    if not path.exists():
+        return {"error": f"case {case} not found"}
+    data = read_case(path)
+    inv = {k.split("/", 1)[1]: v for k, v in data.items() if k.startswith("invariants/")}
+    basis = {k.split("/", 1)[1]: v for k, v in data.items() if k.startswith("tensor_basis/")}
+    target, b_dns = data["targets/a_delta"], data["anisotropy/b_dns"]
+    b_rans = b_dns - target
+    try:
+        pred = candidate_anisotropy(expression, inv, basis)
+    except (ValueError, KeyError) as exc:
+        return {"error": f"invalid expression: {exc}"}
+    ok = np.isfinite(target).all(axis=(1, 2)) & np.isfinite(pred).all(axis=(1, 2))
+    idx = np.flatnonzero(ok)
+    if len(idx) > n:
+        idx = np.sort(np.random.default_rng(0).choice(idx, n, replace=False))
+
+    def lumley_xy(b: np.ndarray) -> dict:
+        c1, _c2, c3 = barycentric_coords(b[idx])
+        return {"x": np.round(c1 + 0.5 * c3, 4).tolist(), "y": np.round(np.sqrt(3) / 2 * c3, 4).tolist()}
+
+    err_rans = np.sum(target[idx] ** 2, axis=(1, 2))
+    err_corr = np.sum((target[idx] - pred[idx]) ** 2, axis=(1, 2))
+    mse0 = float(np.mean(target[ok] ** 2))
+    mse = float(np.mean((target[ok] - pred[ok]) ** 2))
+    coords = data["coordinates"][idx]
+    return {"case": case, "expression": expression, "n": len(idx),
+            "ratio": mse / mse0 if mse0 > 0 else None,
+            "rans": lumley_xy(b_rans), "dns": lumley_xy(b_dns), "corrected": lumley_xy(b_rans + pred),
+            "geometry": {"x": np.round(coords[:, 0], 4).tolist(), "y": np.round(coords[:, 1], 4).tolist(),
+                         "gain": np.round(err_rans - err_corr, 8).tolist()}}
+
+
+@app.get("/api/sessions")
+def list_sessions() -> list[dict]:
+    """Sessions with an event log under runs/, newest first (for the UI session picker)."""
+    out = []
+    for d in Path("runs").iterdir() if Path("runs").is_dir() else []:
+        events = d / "events.jsonl"
+        if d.is_dir() and _SAFE_SESSION.match(d.name) and events.is_file():
+            with events.open(encoding="utf-8") as fh:
+                count = sum(1 for line in fh if line.strip())
+            out.append({"session": d.name, "events": count, "modified": events.stat().st_mtime})
+    return sorted(out, key=lambda s: s["modified"], reverse=True)
+
+
 @app.get("/api/session/state")
 def session_state(session: str = "default") -> dict:
     events = _read_events(session)
@@ -269,7 +344,10 @@ def latest_regions(session: str = "default", use_api: bool = False) -> dict:
 
 
 @app.websocket("/ws/events")
-async def ws_events(ws: WebSocket, session: str = "default") -> None:
+async def ws_events(ws: WebSocket, session: str = "default", backlog: str = "paced") -> None:
+    """Stream a session's events. ``backlog="instant"`` sends the events already on disk at once
+    (live view: no waiting for history); only events appended afterwards are paced. The default
+    paces everything, which the Replay page uses to animate a recorded session."""
     await ws.accept()
     try:
         path = _events_path(session)
@@ -283,9 +361,12 @@ async def ws_events(ws: WebSocket, session: str = "default") -> None:
         # pacing gap before the next send (avoids a double sleep).
         gap_ready = False
 
+        instant_backlog = backlog == "instant"
+        in_backlog = True
+
         async def _send(line: str) -> None:
             nonlocal sent, first, gap_ready
-            if not first and not gap_ready:
+            if not first and not gap_ready and not (instant_backlog and in_backlog):
                 await asyncio.sleep(PACE_SECONDS)
             await ws.send_text(line)
             sent += 1
@@ -302,6 +383,7 @@ async def ws_events(ws: WebSocket, session: str = "default") -> None:
                     if not line.strip():
                         continue
                     await _send(line)
+                in_backlog = False
                 if replay:
                     break
             else:

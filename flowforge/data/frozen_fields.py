@@ -16,6 +16,7 @@ __all__ = [
     "attack_case_for",
     "available_attack_flows",
     "load_frozen_fields",
+    "redteam_case_ids",
     "score_expression",
     "score_on_cases",
     "train_case_ids",
@@ -254,6 +255,19 @@ def validation_case_ids(root=None) -> list[str]:
 
     data = load_cases(root)
     return [entry["id"] for entry in data["cases"] if entry["split"] == "validation"]
+
+
+def redteam_case_ids(root=None) -> list[str]:
+    """Return redteam-split case ids in ``configs/cases.yaml`` order.
+
+    Args:
+        root: Optional repo root / configs dir / YAML file passed through to
+            :func:`flowforge.config.load_cases`.
+    """
+    from flowforge.config import load_cases
+
+    data = load_cases(root)
+    return [entry["id"] for entry in data["cases"] if entry["split"] == "redteam"]
 
 
 def score_expression(
