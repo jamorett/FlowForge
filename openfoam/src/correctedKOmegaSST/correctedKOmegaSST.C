@@ -61,7 +61,7 @@ correctedKOmegaSST<BasicTurbulenceModel>::correctedKOmegaSST
     );
     if (aDeltaHeader.typeHeaderOk<volSymmTensorField>(false))
     {
-        aDelta_.set(new volSymmTensorField(aDeltaHeader, U.mesh()));
+        aDelta_.reset(new volSymmTensorField(aDeltaHeader, U.mesh()));
     }
     IOobject pkDeltaHeader
     (
@@ -73,7 +73,7 @@ correctedKOmegaSST<BasicTurbulenceModel>::correctedKOmegaSST
     );
     if (pkDeltaHeader.typeHeaderOk<volScalarField>(false))
     {
-        PkDelta_.set(new volScalarField(pkDeltaHeader, U.mesh()));
+        PkDelta_.reset(new volScalarField(pkDeltaHeader, U.mesh()));
     }
 }
 
@@ -130,16 +130,18 @@ void correctedKOmegaSST<BasicTurbulenceModel>::correct()
     }
 
     const volScalarField* pkDeltaPtr =
-        hasPkDelta ? PkDelta_.ptr() : nullptr;
+        hasPkDelta ? PkDelta_.get() : nullptr;
+    const volSymmTensorField* aDeltaPtr =
+        hasADelta ? aDelta_.get() : nullptr;
 
     // Identity guard: zero-magnitude corrections -> exact SST.
     scalar maxADelta = 0;
     scalar maxPkDelta = 0;
-    if (aDelta_.valid())
+    if (aDeltaPtr)
     {
-        forAll(*aDelta_.ptr(), celli)
+        forAll(*aDeltaPtr, celli)
         {
-            maxADelta = max(maxADelta, mag((*aDelta_.ptr())[celli]));
+            maxADelta = max(maxADelta, mag((*aDeltaPtr)[celli]));
         }
     }
     if (pkDeltaPtr)
@@ -185,45 +187,24 @@ void correctedKOmegaSST<BasicTurbulenceModel>::correct()
     //
     //   Limiter: PkDelta correction is clamped to avoid k going negative.
     // ---------------------------------------------------------------
-    if (pkDeltaPtr && maxPkDelta > 0)
-    {
-        volScalarField& k = this->k_;
-        const volScalarField& omega = this->omega_;
-        const dimensionedScalar betaStar = this->betaStar_;
-
-        forAll(k, celli)
-        {
-            const scalar pkDelta = (*pkDeltaPtr)[celli];
-            const scalar omegaC = max(omega[celli], scalar(1e-6));
-            // Steady-state explicit source increment:
-            //   delta_k = PkDelta / (betaStar * omega)
-            // Clamp: never drive k below its current residual value.
-            const scalar deltaK = pkDelta / (betaStar.value() * omegaC);
-            k[celli] = max(k[celli] + deltaK, scalar(1e-12));
-        }
-        k.correctBoundaryConditions();
-
-        // Recompute nut from updated k (standard SST formula):
-        //   nut = a1*k / max(a1*omega, S*F2)
-        // The base correct() already set nut from k_0; we update from k_corrected.
-        // Use the existing nut_ member directly (same formula as kOmegaSST::correctNut).
-        this->correctNut();
-    }
+    // ---------------------------------------------------------------
+    // Step 2: In standard SpaRTA / non-linear EARSM injection, the
+    // Reynolds stress correction tauDelta is injected directly into momentum.
+    // Explicitly pumping k every SIMPLE iteration without under-relaxation
+    // artificially inflates k. We let k be transported self-consistently.
+    // ---------------------------------------------------------------
 
     // ---------------------------------------------------------------
     // Step 3: Build tauDelta = 2*k*aDelta for momentum injection.
-    //
     //   tau_corrected = tau_SST + tauDelta
-    //   divDevReff injects -div(tauDelta) into the momentum equation.
-    //   nut is NOT modified for the tensorial term; nut remains the
-    //   standard SST value providing semi-implicit numerical stability.
+    //   divDevReff injects +div(tauDelta) into the momentum equation.
     // ---------------------------------------------------------------
-    if (aDelta_.valid())
+    if (aDeltaPtr)
     {
-        const volSymmTensorField& aDelta = *aDelta_.ptr();
+        const volSymmTensorField& aDelta = *aDeltaPtr;
         if (!tauDelta_.valid())
         {
-            tauDelta_.set
+            tauDelta_.reset
             (
                 new volSymmTensorField
                 (
@@ -241,10 +222,10 @@ void correctedKOmegaSST<BasicTurbulenceModel>::correct()
         }
         else
         {
-            // Rebuild from updated k (Step 2 may have changed k_).
-            tauDelta_() = 2.0*this->k_*aDelta;
+            tauDelta_.ref() = 2.0*this->k_*aDelta;
         }
         zeroWallStress(tauDelta_());
+        tauDelta_.ref().correctBoundaryConditions();
     }
 }
 
