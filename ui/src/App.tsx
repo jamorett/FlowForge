@@ -87,8 +87,8 @@ export function App() {
         {/* View Pages */}
         <main className="transition-all duration-200">
           {view === "Mission Control" && <MissionControl />}
-          {view === "Generalization Matrix" && <GeneralizationMatrix />}
-          {view === "Candidate Inspector" && <CandidateInspector />}
+          {view === "Generalization Matrix" && <GeneralizationMatrix session={session} />}
+          {view === "Candidate Inspector" && <CandidateInspector session={session} />}
           {view === "Vault" && <Vault />}
           {view === "Replay" && <Replay session={session} />}
         </main>

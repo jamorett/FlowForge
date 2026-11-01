@@ -3,8 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchMatrix } from "../api/client";
 import { MatrixHeatmap } from "../components/MatrixHeatmap";
 
-export function GeneralizationMatrix() {
-  const q = useQuery({ queryKey: ["matrix"], queryFn: () => fetchMatrix() });
+export function GeneralizationMatrix({ session = "default" }: { session?: string }) {
+  const q = useQuery({ queryKey: ["matrix", session], queryFn: () => fetchMatrix(session) });
   return (
     <section aria-label="Generalization matrix" className="space-y-3">
       <h2 className="text-xl font-semibold">Generalization Matrix</h2>

@@ -116,13 +116,16 @@ def matrix(session: str = "default") -> dict:
     the red-team sweep (validation only). Cells are filled from scored events
     in the session log when present; otherwise left empty (never invented).
     """
+    from flowforge.data.frozen_fields import attack_case_for
     from flowforge.redteam.generator import generate_attacks
 
-    attacks = [
-        {"flow": f"{s.kind}_a{s.alpha}_re{int(s.reynolds)}", "kind": s.kind,
-         "alpha": s.alpha, "reynolds": s.reynolds, "split": s.split}
-        for s in generate_attacks()
-    ]
+    attacks = []
+    for s in generate_attacks():
+        spec = {"kind": s.kind, "alpha": s.alpha, "reynolds": s.reynolds}
+        case_id = attack_case_for(spec)
+        attacks.append({"flow": case_id or f"{s.kind}_a{s.alpha}_re{int(s.reynolds)}",
+                        "kind": s.kind, "alpha": s.alpha, "reynolds": s.reynolds,
+                        "split": s.split})
     events = _read_events(session)
     # Candidates: scored cells first, then step-level proposals (theorist /
     # rung survivors / champion). Cells stay empty until scored
@@ -148,6 +151,23 @@ def matrix(session: str = "default") -> dict:
          "error": e.get("error"), "split": e.get("split", "generated")}
         for e in events if e.get("candidate") and e.get("flow")
     ]
+    # Scored cells from champion events (logged, never invented):
+    # per-case validation ratios and frozen attack ratios.
+    for e in events:
+        champ = e.get("champion")
+        if not isinstance(champ, dict) or not champ.get("expression"):
+            continue
+        expr = str(champ["expression"])
+        for flow, payload in (champ.get("validation") or {}).items():
+            if isinstance(payload, dict) and payload.get("ratio") is not None:
+                cells.append({"candidate": expr, "flow": str(flow),
+                              "error": float(payload["ratio"]), "split": "validation"})
+        for flow, ratio in (champ.get("attack_ratios") or {}).items():
+            try:
+                cells.append({"candidate": expr, "flow": str(flow),
+                              "error": float(ratio), "split": "generated"})
+            except (TypeError, ValueError):
+                continue
     return {
         "session": session,
         "candidates": candidates,
