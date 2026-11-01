@@ -16,12 +16,15 @@ single is the module with the smallest worst-case error over all flows.
 Length contract (all raise ``ValueError`` on mismatch):
 
 * ``len(modules) >= 2`` and ``len(targets) >= 1``;
-* ``len(modules) == len(targets)`` (the aligned-list contract this module
-  has always asserted, now as ``ValueError`` instead of ``AssertionError``);
 * ``len(gate_inputs)`` is ``len(modules) - 1`` (one gate per composition
   step) or ``len(modules)`` (the historical aligned form; the final gate
   input is validated for finiteness, the composition steps use the first
   ``len(modules) - 1`` gate inputs).
+
+Decoupled design (Phase 5.1 remediation):
+  M modules (e.g. M=2: boundary-layer specialist + separation specialist)
+  can be composed and evaluated against K target flows (K >= 1).
+  There is NO requirement that M == K.
 """
 
 from __future__ import annotations
@@ -50,11 +53,6 @@ def evaluate_composition(modules: list[np.ndarray], gate_inputs: list[np.ndarray
         raise ValueError("composer needs at least two modules")
     if len(targets) < 1:
         raise ValueError("composer needs at least one target flow")
-    if len(modules) != len(targets):
-        raise ValueError(
-            f"len(modules)={len(modules)} != len(targets)={len(targets)}: "
-            "every module/target flow must be accounted for, none may be dropped"
-        )
     if len(gate_inputs) not in (len(modules) - 1, len(modules)):
         raise ValueError(
             f"len(gate_inputs)={len(gate_inputs)} must be len(modules)-1 "
