@@ -1,0 +1,70 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+| =========                 |                                                 |
+| \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\    /   O peration     | Version:  2512                                  |
+|   \\  /    A nd           | Website:  www.openfoam.com                      |
+|    \\/     M anipulation  |                                                 |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    arch        "LSB;label=32;scalar=64";
+    class       polyBoundaryMesh;
+    location    "constant/polyMesh";
+    object      boundary;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+5
+(
+    walls
+    {
+        type            wall;
+        inGroups        1(wall);
+        nFaces          180;
+        startFace       5280;
+    }
+    cyclicX1
+    {
+        type            cyclic;
+        inGroups        1(cyclic);
+        nFaces          30;
+        startFace       5460;
+        matchTolerance  0.0001;
+        transform       unknown;
+        neighbourPatch  cyclicX2;
+    }
+    cyclicX2
+    {
+        type            cyclic;
+        inGroups        1(cyclic);
+        nFaces          30;
+        startFace       5490;
+        matchTolerance  0.0001;
+        transform       unknown;
+        neighbourPatch  cyclicX1;
+    }
+    cyclicZ1
+    {
+        type            cyclic;
+        inGroups        1(cyclic);
+        nFaces          2700;
+        startFace       5520;
+        matchTolerance  0.0001;
+        transform       unknown;
+        neighbourPatch  cyclicZ2;
+    }
+    cyclicZ2
+    {
+        type            cyclic;
+        inGroups        1(cyclic);
+        nFaces          2700;
+        startFace       8220;
+        matchTolerance  0.0001;
+        transform       unknown;
+        neighbourPatch  cyclicZ1;
+    }
+)
+
+// ************************************************************************* //

@@ -22,12 +22,17 @@ SAFE_EPS = 1e-4
 
 INVARIANT_NAMES = ("I1", "I2", "I3", "I4", "I5")
 INVARIANTS = sp.symbols("I1 I2 I3 I4 I5")
+BASIS_NAMES = ("T1", "T2", "T3", "T4")
+BASIS_SYMBOLS = sp.symbols("T1 T2 T3 T4")
+ALL_SYMBOLS = (*INVARIANTS, *BASIS_SYMBOLS)
+ALL_SYMBOL_NAMES = (*INVARIANT_NAMES, *BASIS_NAMES)
 ALLOWED_FUNCTION_NAMES = ("div", "tanh", "exp", "sqrt")
 ALLOWED_FUNCTIONS = (sp.tanh, sp.exp, sp.sqrt, sp.Abs)
 
 # Vocabulary size used by the MDL description length in flowforge.elegance.
 VOCABULARY = (
     *INVARIANT_NAMES,
+    *BASIS_NAMES,
     "+", "-", "*", "div", "tanh", "exp", "sqrt", "**",
     "const", "(", ")",
 )

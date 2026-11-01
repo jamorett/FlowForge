@@ -54,6 +54,28 @@ def synthetic_fields(n: int = 8, seed: int = 42):
     return inv, basis, target
 
 
+def load_case_fields(case_id: str = "periodic_hill_re5600",
+                     processed_root: str | Path = "data/processed") -> tuple[dict, dict, np.ndarray]:
+    """Load real CFD invariants, basis tensors, and a_delta targets from Zarr store.
+
+    Falls back to synthetic_fields() if case store is absent.
+    """
+    store_path = Path(processed_root) / case_id
+    if not store_path.exists():
+        return synthetic_fields()
+    try:
+        from flowforge.data.zarr_store import read_case
+
+        data = read_case(store_path)
+        inv = {k.split("/", 1)[1]: v for k, v in data.items() if k.startswith("invariants/")}
+        basis = {k.split("/", 1)[1]: v for k, v in data.items() if k.startswith("tensor_basis/")}
+        target = data["targets/a_delta"]
+        return inv, basis, target
+    except Exception as exc:
+        logger.warning("Failed to load real case %s: %s; falling back to synthetic", case_id, exc)
+        return synthetic_fields()
+
+
 
 class _AppendOnlyWriter:
     """Minimal append-only fallback if EventLogger cannot be imported."""
@@ -206,7 +228,7 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
     from flowforge.ladder.ladder import apriori_mse, run_ladder
 
     runtime = ModelRuntime(logger=event_logger)
-    inv, basis, target = synthetic_fields()
+    inv, basis, target = load_case_fields("periodic_hill_re5600")
 
     # --- Step 1: Board ---
     lib_context = _build_library_context()
@@ -300,9 +322,10 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
 
     for rung in ("rung0", "rung1", "rung2", "rung3"):
         rung_data = ladder.get(rung, ladder.get(f"{rung}_passed", []))
+        is_synthetic = not Path("data/processed/periodic_hill_re5600").exists()
         event_logger.log({
             "type": rung, "step": rung, "role": rung,
-            "round": round_no, "mock": False, "synthetic": True,
+            "round": round_no, "mock": False, "synthetic": is_synthetic,
             "source": "ladder", "mode": "live", "session": session_name,
             "prompt_hash": _prompt_hash_for(f"flowforge:round:{round_no}:step:{rung}"),
             "survivors": json.loads(json.dumps(rung_data, default=float)) if isinstance(rung_data, list) else [],

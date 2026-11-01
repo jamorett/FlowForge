@@ -230,6 +230,46 @@ def sam_segment(image_path: str, use_api: bool = True) -> list[dict[str, Any]]:
     return segment_error_regions(image_path, use_api=use_api)["regions"]
 
 
+@register("cfd_diagnostics")
+def cfd_diagnostics(
+    expression: str,
+    case_id: str = "periodic_hill_re5600",
+    processed_dir: str = "data/processed",
+) -> dict[str, Any]:
+    """Compute physical CFD metrics: recirculation bubble size, wall shear stress, regional MSE."""
+    from flowforge.data.zarr_store import read_case
+    from flowforge.dsl.evaluate import candidate_anisotropy
+    from flowforge.physics.diagnostics import extract_recirculation_metrics, regional_flow_error
+
+    case_path = Path(processed_dir) / case_id
+    if not case_path.exists():
+        return {"error": f"Case not found: {case_id}"}
+    data = read_case(case_path)
+    coords = data["coordinates"]
+    u_dns = data["U_dns"]
+    u_rans = data["U"]
+    invariants = {k.split("/", 1)[1]: v for k, v in data.items() if k.startswith("invariants/")}
+    basis = {k.split("/", 1)[1]: v for k, v in data.items() if k.startswith("tensor_basis/")}
+    target = data["targets/a_delta"]
+
+    pred = candidate_anisotropy(expression, invariants, basis)
+    err = regional_flow_error(coords, u_rans, u_dns)
+    dns_recirc = extract_recirculation_metrics(coords, u_dns)
+    rans_recirc = extract_recirculation_metrics(coords, u_rans)
+
+    return {
+        "candidate": expression,
+        "case": case_id,
+        "dns_recirculation_cells": dns_recirc["n_backflow_cells"],
+        "rans_recirculation_cells": rans_recirc["n_backflow_cells"],
+        "dns_bubble_length": dns_recirc["bubble_length"],
+        "rans_bubble_length": rans_recirc["bubble_length"],
+        "recirculation_bubble_mse": err["mse_recirculation_bubble"],
+        "attached_flow_mse": err["mse_attached_flow"],
+    }
+
+
+
 # ---------------------------------------------------------------------------
 # Skeptic Tools
 # ---------------------------------------------------------------------------
