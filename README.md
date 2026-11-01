@@ -40,12 +40,13 @@ check pass.
 ## Repository layout
 
 ```text
-flowforge/      Python package (agents, dsl, physics, solver, ladder, redteam,
-                elegance, composer, orchestrator, literature, render, api)
+flowforge/      Python package (agents, dsl, physics, data, solver, ladder, redteam,
+                elegance, composer, baselines, orchestrator, literature, render, api)
 openfoam/       correctedKOmegaSST C++ class, case templates, hill meshing
 configs/        budgets, case splits, frozen tolerances, experiment arms
 prompts/        versioned role prompts (hash logged on every call)
-library/        cross-session memory: modules, attacks, rejected, findings, curriculum
+library/        cross-session memory: modules, attacks, rejected, findings,
+                curriculum, literature (curated closure cards)
 scripts/        entry points: download_data, run_experiment, run_arms,
                 evaluate_locked, reproduce_champion, export_demo
 tests/          unit/ (fast, CI), agents/, science/, integration/ (Docker solver gates)
@@ -65,7 +66,8 @@ working directory.
 
 Green:
 
-- Unit suite green (190+ tests), UI `tsc --noEmit` clean.
+- Offline suite green: 288 passed (unit + agents + science, 2026-10-31);
+  UI `tsc --noEmit` clean (last checked 2026-10-29).
 - Baseline SST converges in the container (`converged=True`, ~837 steps on
   the hill mesh with non-orthogonal correctors).
 - Solver gates green: **identity** (zero correction == baseline SST,
@@ -82,8 +84,14 @@ Open:
   (the old "Re 10595" store was case_1p5, the alpha=1.5 hill at Re 5600)
   and nu (Re_h on the crest bulk velocity -> 2.254e-4). First pass now
   0.855 (was 0.967); the 3-pass recalibration loop diverges (1.24, 1.43).
-  Even live injection of the exact DNS stress gives ~1.15, so the
-  remaining gap is case/DNS equivalence (mesh, wall treatment, mapping).
+  Diagnosis (2026-10-31, scratch probes, not results): on the dataset's
+  own 99x149 mesh with low-Re walls, our baseline matches the dataset SST
+  to 0.0057 (case equivalence solved), yet b-space injection still gives
+  1.05. SST's anisotropy shape is already close to DNS; its k is 2-4x too
+  low in the shear layer, and `tauDelta = 2*k_solver*aDelta` cannot carry
+  that magnitude (stress-referenced injection feeds back through k and
+  diverges, 5.3). Next step needs C++: PkDelta as a `kSource()` term
+  (currently read but unused) or a fixed, k-independent stress field.
   No tolerance was touched. Per the build spec, frozen-RANS a-priori
   scoring carries the candidate ranking.
 

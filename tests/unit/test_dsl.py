@@ -78,15 +78,13 @@ def test_snapping_set_and_rotation() -> None:
 
 def test_earsm_tensor_decomposition() -> None:
     import numpy as np
-    from flowforge.dsl.parser import decompose_candidate, parse_expression, validate_candidate
+    from flowforge.dsl.parser import tensor_coefficients
     from flowforge.dsl.evaluate import candidate_anisotropy
 
-    expr = validate_candidate("0.08 * T2 + 0.02 * T3")
-    coeffs = decompose_candidate(expr)
+    coeffs = tensor_coefficients("0.08 * T2 + 0.02 * T3")
     assert float(coeffs["T2"]) == pytest.approx(0.08)
     assert float(coeffs["T3"]) == pytest.approx(0.02)
-    assert coeffs["T1"] == 0
-    assert set(coeffs) == {"T1", "T2", "T3"}  # T4 rejected at validation
+    assert set(coeffs) == {"T2", "T3"}  # zero terms omitted; T4 rejected at validation
 
     # Evaluate with synthetic basis
     rng = np.random.default_rng(123)

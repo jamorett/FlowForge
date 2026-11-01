@@ -208,7 +208,7 @@ python/uv/docker versions, `simpleFoam` smoke. Proves environment before code de
       full_run_timeout_seconds: 300
     ```
   - `configs/cases.yaml`: Register 6 cases with split assignments:
-    - Train: `periodic_hill_re5600`, `periodic_hill_re10595`
+    - Train: `periodic_hill_re5600`, `periodic_hill_alpha1p5_re5600` (case_1p5; the dataset has no Re 10595 hill)
     - Validation: `curved_step`, `converging_diverging_channel`
     - Locked: `square_duct`, `nasa_wall_mounted_hump`
 
