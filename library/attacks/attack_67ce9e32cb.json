@@ -1,0 +1,15 @@
+{
+  "base_case": "converging_diverging_channel",
+  "broken_expression": "div(5.56311e+11, 1.54681e+06 + I2) * T1 + (-39.597) * tanh(I1) * T2 + 1.5 * T3",
+  "created_at": "2026-11-01T17:00:29.055654Z",
+  "id": "attack_67ce9e32cb",
+  "mode": "frozen",
+  "name": "Frozen attack converging_diverging_channel breaks div(5.56311e+11, 1.54681e+06 + I2) * T1 + (-39.597) * tanh(I1) * T2 + 1.5 * T3",
+  "parameter_sweeps": {
+    "reynolds_number": null,
+    "slope_steepness_alpha": null
+  },
+  "ratio": 1.0739929725269215,
+  "role": "redteam",
+  "status": "active"
+}
