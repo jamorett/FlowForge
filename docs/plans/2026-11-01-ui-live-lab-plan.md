@@ -3,7 +3,7 @@
 **Status (2026-11-01, implemented):** steps 0–7 done. Step 3 extends Steven's Physics view
 (Lumley triangle + gain map) with b12 station profiles instead of a new `/api/compare`;
 `/api/physics_view` now returns `b12`. SAM panel uses analyst-event regions + `/api/artifact`.
-Results reads `/api/arms`. Not done: candidate "clusters by tensor signature" bubble view.
+Results reads `/api/arms`. Step 2 clusters view done (ClusterView: tensor set x coefficient family).
 
 Goal: a demo-grade cockpit where you *watch* the science happen: agents as an
 animated node graph, candidates flowing through the ladder, the red team
