@@ -217,3 +217,20 @@ def test_rung3_rejections_reported_as_non_realizable(tmp_path: Path) -> None:
     assert [b["expression"] for b in hist["broken"] if b.get("reason") == "non_realizable"] == ["A*T1"]
     assert [b["expression"] for b in hist["best_candidates"]] == ["B*T1"]  # rejected one never ranked "best"
     assert any("non-realizable" in h for h in hist["hints"])
+
+
+def test_pre_rung2_realizability_drops_reported_as_non_realizable(tmp_path: Path) -> None:
+    from flowforge.orchestrator.history import session_history
+
+    events = [
+        {"type": "fit", "round": 1, "fits": [
+            {"expression": "A*T1", "mse_after": 0.001, "status": "ok"},
+            {"expression": "B*T1", "mse_after": 0.002, "status": "ok"}]},
+        {"type": "rung2", "round": 1, "survivors": [{"expression": "B*T1"}], "non_realizable": ["A*T1"]},
+        {"type": "rung3", "round": 1, "survivors": [{"expression": "B*T1"}]},
+    ]
+    path = tmp_path / "events.jsonl"
+    path.write_text("\n".join(json.dumps(e) for e in events), encoding="utf-8")
+    hist = session_history(path)
+    assert [b["expression"] for b in hist["broken"] if b.get("reason") == "non_realizable"] == ["A*T1"]
+    assert [b["expression"] for b in hist["best_candidates"]] == ["B*T1"]

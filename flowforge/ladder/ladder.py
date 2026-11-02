@@ -1,7 +1,7 @@
 """Successive-halving ladder (S5.1). Deterministic scoring only.
 
-Rung 0 symbolic (no data) -> Rung 1 a priori (drop 50%) -> Rung 2 short
-(drop 50% again) -> Rung 3 full + realizability. Selection is minimax:
+Rung 0 symbolic (no data) -> Rung 1 a priori (drop 50%) -> realizability
+filter -> Rung 2 short (drop 50% again) -> Rung 3 full + realizability. Selection is minimax:
 rank by worst-case error, never the average. Solver-backed rungs accept
 an evaluator callable so the mock path exercises the same code without
 Docker; production passes the real solver evaluator.
@@ -104,6 +104,62 @@ def rung2_short(candidates: list[dict], short_eval: Callable[[str], float] | Non
     return halving(scored)
 
 
+def _realizability(pred, b_rans=None) -> tuple[bool, float]:
+    """Return (realizable everywhere, fraction of checked points that pass).
+
+    With ``b_rans`` the total anisotropy ``b_rans + pred`` is checked at
+    every point where both are finite; otherwise ``pred`` alone is checked.
+    """
+    from flowforge.physics.tensors import is_realizable
+
+    pred_arr = np.asarray(pred)
+    if b_rans is None:
+        flags = is_realizable(pred_arr)
+        n_total = int(flags.size)
+        passed = int(np.count_nonzero(flags))
+        return bool(np.all(flags)), (float(passed / n_total) if n_total else 0.0)
+    baseline = np.asarray(b_rans)
+    total_field = baseline + pred_arr
+    if pred_arr.ndim >= 2:
+        finite_pred = np.isfinite(pred_arr).reshape(pred_arr.shape[0], -1).all(axis=1)
+    else:
+        finite_pred = np.isfinite(pred_arr)
+    if baseline.ndim >= 2:
+        finite_base = np.isfinite(baseline).reshape(baseline.shape[0], -1).all(axis=1)
+    else:
+        finite_base = np.isfinite(baseline)
+    checked = finite_pred & finite_base
+    n_checked = int(np.count_nonzero(checked))
+    if n_checked == 0:
+        return False, 0.0
+    flags = is_realizable(total_field[checked])
+    passed = int(np.count_nonzero(flags))
+    return bool(np.all(flags)), float(passed / n_checked)
+
+
+def realizable_only(candidates: list[dict], invariants, basis, b_rans=None) -> list[dict]:
+    """Drop non-realizable candidates before the rung-2 halving.
+
+    Realizability is a hard gate that is cheap a priori, so it runs before
+    halving: otherwise the halving can keep only a non-realizable leader and
+    rung 3 then rejects the whole round although realizable candidates were
+    in the pool. Same check as :func:`rung3_full`; rung 3 still re-checks.
+    """
+    from flowforge.dsl.evaluate import candidate_anisotropy
+
+    kept: list[dict] = []
+    for cand in candidates:
+        try:
+            pred = candidate_anisotropy(cand["expression"], invariants, basis)
+        except ImportError:
+            raise
+        except Exception:
+            continue
+        if _realizability(pred, b_rans)[0]:
+            kept.append(cand)
+    return kept
+
+
 def rung3_full(candidates: list[dict], invariants, basis, target, b_rans=None) -> list[dict]:
     """Rung 3 full evaluation + realizability gate. No halving here.
 
@@ -129,10 +185,8 @@ def rung3_full(candidates: list[dict], invariants, basis, target, b_rans=None) -
         (fraction of checked points that pass).
     """
     from flowforge.dsl.evaluate import candidate_anisotropy
-    from flowforge.physics.tensors import is_realizable
 
     out: list[dict] = []
-    baseline = None if b_rans is None else np.asarray(b_rans)
     for cand in candidates:
         expr = cand["expression"]
         entry = dict(cand)
@@ -143,33 +197,7 @@ def rung3_full(candidates: list[dict], invariants, basis, target, b_rans=None) -
         except Exception as exc:
             entry.update({"score": DIVERGED_PENALTY, "realizable": False, "realizable_fraction": 0.0, "rejected": str(exc)})
             continue
-        pred_arr = np.asarray(pred)
-        if baseline is None:
-            flags = is_realizable(pred_arr)
-            n_total = int(flags.size)
-            passed = int(np.count_nonzero(flags))
-            realizable = bool(np.all(flags))
-            fraction = float(passed / n_total) if n_total else 0.0
-        else:
-            total_field = baseline + pred_arr
-            if pred_arr.ndim >= 2:
-                finite_pred = np.isfinite(pred_arr).reshape(pred_arr.shape[0], -1).all(axis=1)
-            else:
-                finite_pred = np.isfinite(pred_arr)
-            if baseline.ndim >= 2:
-                finite_base = np.isfinite(baseline).reshape(baseline.shape[0], -1).all(axis=1)
-            else:
-                finite_base = np.isfinite(baseline)
-            checked = finite_pred & finite_base
-            n_checked = int(np.count_nonzero(checked))
-            if n_checked == 0:
-                realizable = False
-                fraction = 0.0
-            else:
-                flags = is_realizable(total_field[checked])
-                passed = int(np.count_nonzero(flags))
-                realizable = bool(np.all(flags))
-                fraction = float(passed / n_checked)
+        realizable, fraction = _realizability(pred, b_rans)
         entry["score_rung3"] = apriori_mse(pred, target)
         entry["score"] = entry["score_rung3"]
         entry["realizable"] = realizable
@@ -182,7 +210,7 @@ def rung3_full(candidates: list[dict], invariants, basis, target, b_rans=None) -
 
 def run_ladder(expressions: list[str], invariants, basis, target,
                short_eval: Callable[[str], float] | None = None, b_rans=None) -> dict:
-    """Full ladder: rung 0 -> 1 (halving) -> 2 (halving) -> 3 (realizability).
+    """Full ladder: rung 0 -> 1 (halving) -> realizable -> 2 (halving) -> 3 (realizability).
 
     Args:
         expressions: Candidate expressions.
@@ -201,6 +229,7 @@ def run_ladder(expressions: list[str], invariants, basis, target,
     result["rung1"] = halving(rung1_scores(passed0, invariants, basis, target))
     if not result["rung1"]:
         return result
-    result["rung2"] = rung2_short(result["rung1"], short_eval=short_eval)
+    advanced = realizable_only(result["rung1"], invariants, basis, b_rans=b_rans)
+    result["rung2"] = rung2_short(advanced, short_eval=short_eval)
     result["rung3"] = rung3_full(result["rung2"], invariants, basis, target, b_rans=b_rans)
     return result

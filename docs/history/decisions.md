@@ -63,3 +63,33 @@ were broken by the red team on converging_diverging_channel (ratio 1.10–1.19),
 the sparse baseline (1.05–1.10).
 
 **Consequence:** pilot 1 is superseded; pilot 2 reruns the same protocol with v11.
+
+## 2026-11-01 — Realizability filter before the rung-2 halving
+
+**Why:** frozen pilot 2 (`runs/arms/pilot2-2026-11-01.json`, $3.09): 23 of 30 swarm rounds ended
+`all_rejected` (pilot 1: 10 of 30) and 3 of 6 swarm seeds had no champion, so RP1/RP2 were not
+computable. The rung-2 halving kept one candidate per round; rung 3 then rejected it as
+non-realizable (it left the barycentric triangle at 14–138 of 8000 train points), although
+realizable candidates were in the rung-1 pool. Offline check: every round champion that did pass,
+and the sparse baseline, are realizable on train data, so the gate itself is fair.
+
+**Change:** `flowforge/ladder/ladder.py` `realizable_only` applies the same realizability check
+(total anisotropy `b_rans + pred`) to the rung-1 survivors before `rung2_short`; rung 3 still
+re-checks. The rung-2 event logs the dropped expressions as `non_realizable`, and session history
+reports them to the Theorist like rung-3 rejections. The gate and its tolerance are unchanged; only
+its position moves ahead of the halving. Complements the realizability-constrained constant fit
+(commit cb9655a).
+
+## 2026-11-01 — A seed without a champion scores 1.0 (no correction)
+
+**Rule (fixed before pilot 3):** a swarm seed that ran every planned round without an errored round
+but never produced a champion delivers no correction, so it scores `worst_validation_ratio = 1.0`
+(plain SST) and counts in RP1/RP2 like any other seed. Same rule for every arm (the sparse baseline
+always produces a model). A seed cut by the budget or by an errored round stays missing and the arm
+is reported incomplete. Each seed row carries `no_champion`; the count per arm is reported
+separately as a descriptive.
+
+**Why not drop such seeds:** dropping them favors the arm that fails more often (only its
+successes are compared), and with 3 seeds per arm a dropped seed leaves a comparison that cannot
+reach any useful p (1 vs 3 seeds: p_min = 0.25). The extra spread from a 1.0 is real variability
+of the method, not noise to hide.

@@ -32,3 +32,16 @@ def test_mock_round_runs_without_api() -> None:
     result = run_round(1, mock=True)
     assert result["status"] == "ok"
     assert result["proposed"] == 4
+
+
+def test_realizability_filter_runs_before_rung2_halving() -> None:
+    """A non-realizable rung-1 leader must not crowd out a realizable candidate."""
+    from flowforge.ladder.ladder import realizable_only, rung2_short
+    from flowforge.orchestrator.round import synthetic_fields
+
+    inv, basis, _ = synthetic_fields(n=64, seed=3)
+    pool = [{"expression": "100 * T1", "score": 0.1}, {"expression": "0.001 * T1", "score": 0.2}]
+    kept = realizable_only(pool, inv, basis)
+    assert [c["expression"] for c in kept] == ["0.001 * T1"]
+    assert [c["expression"] for c in rung2_short(kept)] == ["0.001 * T1"]
+    assert [c["expression"] for c in rung2_short(pool)] == ["100 * T1"]  # old order lost the round

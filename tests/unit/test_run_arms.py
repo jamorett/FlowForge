@@ -140,3 +140,14 @@ def test_session_keeps_best_champion_when_later_round_rejects_all(monkeypatch) -
     out = run_arms.collect_swarm_arm("swarm", [42], 3, 1, 10.0, False, [0.0], [False])
     row = out["seeds"][0]
     assert row["metric"] == 0.78 and row["expression"] == "I1*T1"
+
+
+def test_seed_without_champion_scores_as_sst() -> None:
+    from scripts import run_arms as mod
+
+    rejected = [(i, {"status": "all_rejected", "champion": None}) for i in (1, 2, 3)]
+    assert mod.seed_metric_or_no_champion(None, rejected, 3) == (1.0, True)
+    assert mod.seed_metric_or_no_champion(0.8, rejected, 3) == (0.8, False)
+    assert mod.seed_metric_or_no_champion(None, rejected[:2], 3) == (None, False)  # budget cut: missing
+    errored = rejected[:2] + [(3, {"status": "error"})]
+    assert mod.seed_metric_or_no_champion(None, errored, 3) == (None, False)  # error: missing

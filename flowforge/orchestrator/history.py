@@ -179,6 +179,7 @@ def session_history(events_path: str | Path, k: int = 5) -> dict:
     champions: list[dict] = []
     broken: list[dict] = []
     passed: dict[str, dict] = {"rung2": {}, "rung3": {}}
+    gated: set[str] = set()  # dropped by the realizability filter before rung 2
     for raw_line in text.splitlines():
         line = raw_line.strip()
         if not line:
@@ -215,6 +216,9 @@ def session_history(events_path: str | Path, k: int = 5) -> dict:
                 names = {s.get("expression") if isinstance(s, dict) else s for s in survivors}
                 passed[kind].setdefault(event.get("round"), set()).update(
                     n.strip() for n in names if isinstance(n, str) and n.strip())
+            dropped = event.get("non_realizable") if kind == "rung2" else None
+            if isinstance(dropped, list):
+                gated.update(n.strip() for n in dropped if isinstance(n, str) and n.strip())
         elif kind == "redteam":
             breaks = event.get("breaks")
             if not isinstance(breaks, list):
@@ -234,10 +238,11 @@ def session_history(events_path: str | Path, k: int = 5) -> dict:
                     "case_id": case_id,
                     "ratio": ratio,
                 })
-    # Passed rung 2 but not rung 3 in the same round = rejected by the
+    # Dropped by the pre-rung-2 realizability filter, or passed rung 2 but
+    # not rung 3 in the same round (legacy logs) = rejected by the
     # realizability gate; tell the theorist instead of ranking it "best".
-    non_realizable = sorted({e for rnd, s2 in passed["rung2"].items()
-                             for e in s2 - passed["rung3"].get(rnd, set())})
+    non_realizable = sorted(gated | {e for rnd, s2 in passed["rung2"].items()
+                                     for e in s2 - passed["rung3"].get(rnd, set())})
     for expression in non_realizable:
         broken.append({"expression": expression, "case_id": None, "ratio": None,
                        "reason": "non_realizable"})

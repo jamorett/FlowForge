@@ -57,7 +57,8 @@ def test_last_round_empty_falls_back_to_best_train(tmp_path, monkeypatch) -> Non
     assert output["arms"]["swarm"]["complete"] is True
 
 
-def test_all_rounds_empty_keeps_none_and_incomplete(tmp_path, monkeypatch) -> None:
+def test_all_rounds_empty_scores_as_sst(tmp_path, monkeypatch) -> None:
+    """No champion after every planned round ran = no correction = ratio 1.0."""
     from flowforge.baselines import sparse as sparse_module
     from flowforge.orchestrator import round as round_module
     from scripts import run_arms
@@ -80,12 +81,13 @@ def test_all_rounds_empty_keeps_none_and_incomplete(tmp_path, monkeypatch) -> No
     payload = json.loads(out_path.read_text(encoding="utf-8"))
     for arm in ("swarm", "swarm_no_redteam"):
         info = payload["arms"][arm]
-        assert info["complete"] is False
-        assert info["summary"] is None
+        assert info["complete"] is True
+        assert info["summary"]["mean"] == 1.0
         assert len(info["seeds"]) == 3
         for row in info["seeds"]:
-            assert row["metric"] is None
+            assert row["metric"] == 1.0
+            assert row["no_champion"] is True
             assert row["champion_round"] is None
             assert row["fallback"] is False
     assert output is not None
-    assert output["arms"]["swarm"]["complete"] is False
+    assert output["comparisons"]["swarm_vs_sparse_baseline"]["available"] is True

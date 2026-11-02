@@ -85,6 +85,29 @@ def comparison_p_min(n1: int, n2: int) -> float:
     return 1.0 / float(math.comb(n1 + n2, n1))
 
 
+# A seed whose planned rounds all ran without an error but never produced a
+# champion delivers no correction: it scores as plain SST (ratio 1.0) instead
+# of being dropped, so failures count against the arm (decisions.md 2026-11-01).
+NO_CHAMPION_RATIO = 1.0
+
+
+def seed_metric_or_no_champion(metric: float | None, round_results: list[tuple[int, dict]],
+                               rounds: int) -> tuple[float | None, bool]:
+    """Return (metric, no_champion), scoring a champion-less seed as SST.
+
+    Only a seed that ran every planned round with no errored round is
+    scored ``NO_CHAMPION_RATIO``; budget-cut or errored seeds stay None
+    (missing, so the arm is reported incomplete).
+    """
+    if metric is not None:
+        return metric, False
+    ran_all = len(round_results) == int(rounds) and int(rounds) > 0
+    errored = any(isinstance(r, dict) and r.get("status") == "error" for _, r in round_results)
+    if ran_all and not errored:
+        return NO_CHAMPION_RATIO, True
+    return None, False
+
+
 def arm_metrics(arms_output: dict, arm: str) -> list[float] | None:
     """Return the complete metric list for an arm, else None."""
     info = arms_output.get(arm)
@@ -403,9 +426,11 @@ def collect_swarm_arm(arm: str, seeds: list[int], rounds: int, groups: int,
             metric, expression, champion_round, fallback = select_seed_champion(round_results)
             if completed < int(rounds):
                 incomplete[0] = True
+        metric, no_champion = seed_metric_or_no_champion(metric, round_results, rounds)
         row = make_seed_row(seed, metric, expression, session, seed_cost, dry_run)
         row["champion_round"] = champion_round
         row["fallback"] = bool(fallback)
+        row["no_champion"] = bool(no_champion)
         rows.append(row)
     metrics = [row["metric"] for row in rows if row["metric"] is not None]
     complete = len(metrics) == len(rows) and len(rows) > 0

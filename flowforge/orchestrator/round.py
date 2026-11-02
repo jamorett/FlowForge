@@ -300,7 +300,7 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
     from flowforge.agents.runtime.client import ModelRuntime, BudgetExceededError
     from flowforge.ladder.ladder import (
         apriori_mse, halving, rung0 as rung0_pass, rung1_scores,
-        rung2_short, rung3_full,
+        realizable_only, rung2_short, rung3_full,
     )
 
     from flowforge.orchestrator.history import session_history
@@ -455,7 +455,7 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
         sub_basis = {name: arr[:k] for name, arr in basis.items()}
         return apriori_mse(candidate_anisotropy(expr, sub_inv, sub_basis), target[:k])
 
-    def _log_rung(rung: str, rung_data: list) -> None:
+    def _log_rung(rung: str, rung_data: list, **extra) -> None:
         event_logger.log({
             "type": rung, "step": rung, "role": rung,
             "round": round_no, "mock": False, "synthetic": False,
@@ -464,6 +464,7 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
             "cases": list(_train_cases),
             "n_points": int(target.shape[0]),
             "survivors": json.loads(json.dumps(rung_data, default=float)) if isinstance(rung_data, list) else [],
+            **extra,
         })
 
     passed0 = [e for e in expressions if rung0_pass(e)]
@@ -566,8 +567,13 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
 
     # --- Steps 7: Rungs 2-3 on unbroken survivors only ---
     advanced = [s for s in rung1 if s.get("expression") not in broken_exprs]
-    rung2 = rung2_short(advanced, short_eval=short_eval)
-    _log_rung("rung2", rung2)
+    # Realizability (hard gate, cheap a priori) before halving, so a
+    # non-realizable leader cannot crowd out realizable candidates.
+    realizable = realizable_only(advanced, inv, basis, b_rans=b_rans)
+    kept = {s.get("expression") for s in realizable}
+    dropped = [s.get("expression") for s in advanced if s.get("expression") not in kept]
+    rung2 = rung2_short(realizable, short_eval=short_eval)
+    _log_rung("rung2", rung2, non_realizable=dropped)
     rung3 = rung3_full(rung2, inv, basis, target, b_rans=b_rans)
     _log_rung("rung3", rung3)
     final = rung3
