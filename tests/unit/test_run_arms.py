@@ -125,6 +125,25 @@ def test_runner_dry_run_shape_and_budget(tmp_path, monkeypatch, capsys) -> None:
     assert "swarm" in text
 
 
+def test_five_seed_dry_run_summarizes_all_seeds(tmp_path, monkeypatch) -> None:
+    """The decision run uses 5 seeds per arm (decisions.md 2026-11-02)."""
+    from flowforge.baselines import sparse as sparse_module
+    from flowforge.orchestrator import round as round_module
+    from scripts import run_arms
+
+    def fake_run_round(round_no, mock=False, groups=1, session=None, redteam=True, **kwargs):
+        return {"status": "ok", "champion": None, "dollars_spent": 0.0, "round": int(round_no)}
+
+    monkeypatch.setattr(round_module, "run_round", fake_run_round)
+    monkeypatch.setattr(sparse_module, "evaluate_sparse_baseline",
+                        lambda seed=42, **kw: {"expression": "I1", "worst_validation_ratio": 0.8 + seed / 1000})
+    out = run_arms.main(["--dry-run", "--rounds", "1", "--seeds", "42,43,44,45,46",
+                         "--budget-usd", "10.0", "--out", str(tmp_path / "a.json")])
+    assert len(out["arms"]["sparse_baseline"]["summary"]["runs"]) == 5
+    rp2 = out["comparisons"]["swarm_vs_sparse_baseline"]
+    assert rp2["available"] is True and rp2["n1"] == 5 and rp2["p_min"] == 1 / 252
+
+
 def test_session_keeps_best_champion_when_later_round_rejects_all(monkeypatch) -> None:
     from flowforge.orchestrator import round as round_module
     from scripts import run_arms

@@ -93,3 +93,30 @@ separately as a descriptive.
 successes are compared), and with 3 seeds per arm a dropped seed leaves a comparison that cannot
 reach any useful p (1 vs 3 seeds: p_min = 0.25). The extra spread from a 1.0 is real variability
 of the method, not noise to hide.
+
+## 2026-11-02 — Decision run: 5 seeds per arm, metric unchanged
+
+**Fixed before running:** the decision run (S7.1) is `scripts/run_arms.py --rounds 5 --groups 2
+--seeds 42,43,44,45,46 --budget-usd 12`, frozen mode, output `runs/arms/decision-2026-11-02.json`.
+Pilots 1–3 tuned the protocol and are not results.
+
+- **Seeds:** 5 per arm (spec: at least 3). With 3 vs 3 the smallest exact one-sided p is 0.05, so
+  no comparison could reach p < 0.05; with 5 vs 5 it is 1/252 ≈ 0.004. Cost ≈ $5.5 at pilot-3
+  rates. `run_arms.py` now accepts ≥ 3 distinct seeds and summarizes an arm only when every seed
+  has a metric.
+- **Metric:** unchanged, `worst_validation_ratio` over the validation split (`curved_step`), for
+  RP1 and RP2. The red-team split (`converging_diverging_channel`) stays out of the metric; any
+  number on it is reported as a post-hoc descriptive, never as an RP result.
+- **No-champion rule:** a champion-less seed scores 1.0 (entry of 2026-11-01).
+- **Pilot-3 reference (not a result):** swarm 0.852 ± 0.032, no red team 0.842 ± 0.021, sparse
+  0.821 ± 0.003; RP1 p = 0.65, RP2 p = 0.80 (3 seeds).
+
+**Code version of the decision run:** commit `7e0ed5f` plus the uncommitted 5-seed change to
+`scripts/run_arms.py` described above. Later commits (Live Lab UI, run control, Analyst v3 with
+segmented error regions, 2026-11-01 evening, merged after the run) change the Analyst's inputs; a
+rerun on newer code is a different protocol and is not pooled with this run.
+
+**Result (frozen, 5 seeds, $5.88, `runs/arms/decision-2026-11-02.json`):** swarm 0.845 ± 0.018,
+swarm_no_redteam 0.858 ± 0.011, sparse_baseline 0.823 ± 0.004. RP1 U = 18/25, exact one-sided
+p = 0.155 (not significant; direction favors the red team). RP2 U = 1/25, p = 0.996 (sparse better
+on the registered metric). All 10 swarm seeds produced a champion (no 1.0 imputation).

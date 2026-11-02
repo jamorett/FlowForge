@@ -30,7 +30,7 @@ COMPARISON_PAIRS = (("swarm", "swarm_no_redteam"), ("swarm", "sparse_baseline"))
 
 
 def summarize(results: list[float]) -> dict:
-    assert len(results) == 3, "science protocol requires exactly 3 seeds"
+    assert len(results) >= 3, "science protocol requires at least 3 seeds"
     return {"mean": statistics.mean(results),
             "stdev": statistics.stdev(results) if len(results) > 1 else 0.0,
             "min": min(results),
@@ -208,9 +208,9 @@ def default_out_path() -> str:
     return f"runs/arms/arms-{stamp}.json"
 
 
-def summarize_or_none(metrics: list[float]) -> dict | None:
-    """Summarize exactly 3 metrics, else None."""
-    if len(metrics) != 3:
+def summarize_or_none(metrics: list[float], expected: int = 3) -> dict | None:
+    """Summarize when every one of ``expected`` (>= 3) seeds has a metric, else None."""
+    if len(metrics) != int(expected) or len(metrics) < 3:
         return None
     return summarize(metrics)
 
@@ -434,7 +434,7 @@ def collect_swarm_arm(arm: str, seeds: list[int], rounds: int, groups: int,
         rows.append(row)
     metrics = [row["metric"] for row in rows if row["metric"] is not None]
     complete = len(metrics) == len(rows) and len(rows) > 0
-    return {"seeds": rows, "summary": summarize_or_none(metrics), "dry_run": bool(dry_run), "complete": bool(complete)}
+    return {"seeds": rows, "summary": summarize_or_none(metrics, len(rows)), "dry_run": bool(dry_run), "complete": bool(complete)}
 
 
 def collect_sparse_arm(seeds: list[int], dry_run: bool) -> dict:
@@ -449,7 +449,7 @@ def collect_sparse_arm(seeds: list[int], dry_run: bool) -> dict:
         session = f"arms-sparse_baseline-s{seed}"
         rows.append(make_seed_row(seed, metric, expression, session, 0.0, dry_run))
     metrics = [row["metric"] for row in rows if row["metric"] is not None]
-    return {"seeds": rows, "summary": summarize_or_none(metrics), "dry_run": bool(dry_run)}
+    return {"seeds": rows, "summary": summarize_or_none(metrics, len(rows)), "dry_run": bool(dry_run)}
 
 
 def print_table(arms_output: dict) -> None:
@@ -488,8 +488,8 @@ def main(argv: list[str] | None = None) -> dict | None:
         seeds = parse_seed_list(args.seeds)
     except ValueError:
         parser.error("--seeds must be comma-separated ints, e.g. 42,43,44")
-    if len(seeds) != 3:
-        parser.error("--seeds must contain exactly 3 seeds")
+    if len(seeds) < 3 or len(set(seeds)) != len(seeds):
+        parser.error("--seeds must contain at least 3 distinct seeds")
     rounds = int(args.rounds)
     groups = int(args.groups)
     budget_usd = float(args.budget_usd)
