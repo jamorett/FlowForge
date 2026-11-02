@@ -31,7 +31,11 @@ check pass.
   `POST <base>/responses` (`model: sam-3.1`, same Bearer `MODEL_API_KEY`). Concept prompt
   first; on zero matches the local box is re-sent as a box prompt and SAM
   answers with a refined box plus mask under our id. Every result is labeled
-  `sam-3.1`, `local-fallback`, or `none` — never misreported.
+  `sam-3.1`, `local-fallback`, or `none` — never misreported. SAM runs only when
+  a run enables it (UI "SAM 3.1 segmentation" / `run_arms.py --sam`); otherwise the
+  local segmenter is used. The segmented regions (in physical x/h, y/h) are given to
+  the Analyst before it diagnoses. Error maps are true spatial rasters since
+  2026-11-01; earlier maps reshaped the cell list into a square and are not spatial.
 - **API + UI** (`flowforge/api/server.py`, `ui/`): FastAPI backend, React +
   Plotly cockpit. Mission Control starts mock (free) or live rounds;
   Candidate Inspector shows live candidates with a `LIVE`/`OFFLINE SAMPLES`
@@ -118,11 +122,22 @@ Prereqs: Python 3.12, Node 18+, Docker Desktop, a Meta Model API key.
    (identity + injection, ~6 min),
    `python -m pytest tests/integration/test_solver_oracle.py -q`
    (DNS oracle, ~3–7 min).
-6. Serve: `python -m uvicorn flowforge.api.server:app --port 8000`, then
-   `cd ui && npm run dev` (needs `VITE_API=http://localhost:8000`) and open
-   the Vite address (usually `http://localhost:5173`). Start with a mock
-   round from Mission Control to validate the setup before running a live
-   round.
+6. Serve the API: `python -m uvicorn flowforge.api.server:app --host 127.0.0.1 --port 8000`.
+   UI, either way:
+   - **Static (recommended for demos):** `cd ui && VITE_API=http://localhost:8000 npx vite build`,
+     then `python -m http.server 5173 --bind 127.0.0.1 --directory ui/dist`. No Vite dev
+     server runs (its esbuild/vite advisories are fixed only in vite 8).
+   - **Dev:** `cd ui && npm run dev` (the Vite proxy forwards `/api` and `/ws`).
+
+   Open `http://localhost:5173`, pick a session in the top bar. Mission Control shows the
+   live agent graph, candidate funnel, progress vs SST, champion, red-team arena and SAM
+   error regions; Results shows the arms table; Replay re-plays a session at no cost.
+   **Run control** (Mission Control, top panel): presets (smoke test, live check, research
+   session, ablation, experiment dry run, full experiment) or custom session runs (rounds,
+   groups, red team on/off, mock/live, budget cap) and the 3-arm experiment (rounds, groups,
+   3 session seeds, budget, dry run, archive old sessions). Pause / resume / stop act between
+   rounds; experiments can also be killed. Live runs ask for confirmation with a cost estimate
+   and cannot exceed `session_dollar_limit`. Start with the free smoke test.
 
 Costs: live rounds and SAM calls consume API credits (approximately $0.60
 observed for the initial live rounds); mock mode and `FLOWFORGE_REPLAY=1`

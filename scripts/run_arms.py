@@ -390,6 +390,27 @@ def baseline_expression(baseline: dict) -> str | None:
     return str(expression) if isinstance(expression, str) else None
 
 
+# Optional run control (set by --control-dir; used by the UI run panel). Checked between
+# rounds only: a round is never cut in the middle.
+CONTROL_DIR: Path | None = None
+STOPPED = [False]
+SAM = [False]  # --sam: analyst error maps segmented by SAM 3.1 (same for both swarm arms)
+
+
+def control_should_stop(poll_seconds: float = 2.0) -> bool:
+    """Block while ``<control>/pause`` exists; True if ``<control>/stop`` exists."""
+    import time
+
+    if CONTROL_DIR is None:
+        return False
+    while (CONTROL_DIR / "pause").exists() and not (CONTROL_DIR / "stop").exists():
+        time.sleep(poll_seconds)
+    if (CONTROL_DIR / "stop").exists():
+        STOPPED[0] = True
+        return True
+    return False
+
+
 def collect_swarm_arm(arm: str, seeds: list[int], rounds: int, groups: int,
                       budget_usd: float, dry_run: bool,
                       spent: list[float], incomplete: list[bool]) -> dict:
@@ -399,7 +420,8 @@ def collect_swarm_arm(arm: str, seeds: list[int], rounds: int, groups: int,
     want_redteam = arm != "swarm_no_redteam"
     rows: list[dict] = []
     for seed in seeds:
-        session = f"arms-{arm}-s{seed}"
+        # dry runs mock the agents: keep them out of the real sessions' history
+        session = f"{'dryrun-' if dry_run else ''}arms-{arm}-s{seed}"
         seed_cost = 0.0
         round_results: list[tuple[int, dict]] = []
         completed = 0
@@ -407,9 +429,12 @@ def collect_swarm_arm(arm: str, seeds: list[int], rounds: int, groups: int,
             if spent[0] > float(budget_usd):
                 incomplete[0] = True
                 break
+            if control_should_stop():
+                incomplete[0] = True
+                break
             result = round_module.run_round(
                 round_no, mock=False, groups=groups,
-                session=session, redteam=want_redteam)
+                session=session, redteam=want_redteam, sam=SAM[0])
             round_results.append((round_no, result))
             completed += 1
             cost = round_cost(result)
@@ -475,6 +500,10 @@ def main(argv: list[str] | None = None) -> dict | None:
     parser.add_argument("--budget-usd", type=float, default=10.0, dest="budget_usd")
     parser.add_argument("--out", default=None)
     parser.add_argument("--dry-run", action="store_true", dest="dry_run")
+    parser.add_argument("--control-dir", default=None, dest="control_dir",
+                        help="directory watched for 'pause'/'stop' files between rounds (UI run panel)")
+    parser.add_argument("--sam", action="store_true",
+                        help="segment analyst error maps with SAM 3.1 (live API calls) in both swarm arms")
     args = parser.parse_args(argv)
     if args.mock:
         for arm in ARMS:
@@ -499,6 +528,10 @@ def main(argv: list[str] | None = None) -> dict | None:
         parser.error("--groups must be >= 1")
     out_path = str(args.out) if args.out is not None else default_out_path()
     dry_run = bool(args.dry_run)
+    global CONTROL_DIR
+    CONTROL_DIR = Path(args.control_dir) if args.control_dir else None
+    STOPPED[0] = False
+    SAM[0] = bool(args.sam)
 
     from flowforge.agents import dispatcher as dispatcher_module
     from flowforge.agents.dispatcher import dispatch_role_mock
@@ -513,8 +546,13 @@ def main(argv: list[str] | None = None) -> dict | None:
             active = {}
         return dispatch_role_mock(role, active)
 
+    from flowforge.orchestrator import round as round_module
+
+    original_attacks_dir = round_module.ATTACKS_DIR
     if dry_run:
         dispatcher_module.dispatch_role = dry_dispatch  # type: ignore[assignment]
+        # mocked proposers must not write "breaks" into the permanent attack library
+        round_module.ATTACKS_DIR = Path("runs") / "arms" / "dryrun-attacks"
     try:
         spent = [0.0]
         incomplete = [False]
@@ -534,12 +572,15 @@ def main(argv: list[str] | None = None) -> dict | None:
             "spent_usd": float(spent[0]),
             "incomplete": bool(incomplete[0]),
             "dry_run": bool(dry_run),
+            "stopped": bool(STOPPED[0]),
+            "sam": bool(SAM[0]),
             "arms": arms_output,
             "comparisons": comparisons,
         }
     finally:
         if dry_run:
             dispatcher_module.dispatch_role = original_dispatch  # type: ignore[assignment]
+            round_module.ATTACKS_DIR = original_attacks_dir
     out_file = Path(out_path)
     out_file.parent.mkdir(parents=True, exist_ok=True)
     out_file.write_text(json.dumps(output, indent=2, sort_keys=True), encoding="utf-8")

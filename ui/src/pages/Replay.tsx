@@ -1,65 +1,54 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { AgentGraph } from "../components/AgentGraph";
+import { CandidateFunnel, ProgressChart } from "../components/CandidateFunnel";
 import { EventFeed } from "../components/EventFeed";
+import { ChampionCard } from "../components/LabPanels";
+import { useEvents, useLab } from "../state/events";
 
+const SPEEDS = { "1×": 1000, "4×": 250, "16×": 62 } as const;
+
+/** Zero-token playback of a recorded session: every view re-derived at the cursor. */
 export function Replay({ session = "round-1" }: { session?: string }) {
-  const [activeSession, setActiveSession] = useState(session);
-  const [speed, setSpeed] = useState("20");
+  const { events } = useEvents();
+  const total = events.length;
+  const [cursor, setCursor] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [speed, setSpeed] = useState<keyof typeof SPEEDS>("4×");
+  const lab = useLab(cursor);
 
+  useEffect(() => { setCursor(0); setPlaying(false); }, [session]);
+  useEffect(() => {
+    if (!playing) return;
+    if (cursor >= total) { setPlaying(false); return; }
+    const t = setTimeout(() => setCursor((c) => Math.min(total, c + 1)), SPEEDS[speed]);
+    return () => clearTimeout(t);
+  }, [playing, cursor, total, speed]);
+
+  const btn = "px-3 py-1.5 rounded-lg text-xs font-semibold border border-white/10";
   return (
-    <section aria-label="Replay and Scrubber" className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <span>↺</span>
-            <span>Deterministic Session Replay</span>
-          </h2>
-          <p className="text-xs text-neutral-400 mt-1">
-            Zero-token reproducible playback: re-feeds recorded responses from <code className="text-neutral-300">events.jsonl</code>.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 glass-panel-subtle px-3 py-1.5 rounded-lg border border-white/5 text-xs">
-            <span className="text-neutral-400">Pace:</span>
-            <select
-              value={speed}
-              onChange={(e) => setSpeed(e.target.value)}
-              className="bg-transparent text-cyan-300 font-mono text-xs focus:outline-none"
-            >
-              <option value="5" className="bg-neutral-900 text-neutral-200">5 events/s</option>
-              <option value="20" className="bg-neutral-900 text-neutral-200">20 events/s (Default)</option>
-              <option value="50" className="bg-neutral-900 text-neutral-200">50 events/s (Fast)</option>
-            </select>
-          </div>
-        </div>
+    <section aria-label="Replay" className="space-y-4">
+      <div>
+        <h2 className="text-xl font-bold text-white">Session replay · <span className="font-mono text-cyan-300">{session}</span></h2>
+        <p className="text-xs text-neutral-400">Re-plays the recorded <code>events.jsonl</code>: no model calls, no tokens. Every panel is derived at the cursor.</p>
       </div>
-
-      {/* Scrubber Controls Banner */}
-      <div className="glass-panel p-4 rounded-xl border border-white/10 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <button className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-[0_0_12px_rgba(16,185,129,0.3)] transition-all">
-            ▶ Play Replay
-          </button>
-          <button className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/5 hover:bg-white/10 text-neutral-300 border border-white/10 transition-all">
-            ⏸ Pause
-          </button>
-          <button className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/5 hover:bg-white/10 text-neutral-300 border border-white/10 transition-all">
-            ⏭ Step Next
-          </button>
-        </div>
-
-        <div className="flex items-center gap-2 text-xs">
-          <span className="text-neutral-400">Target Session:</span>
-          <input
-            type="text"
-            value={activeSession}
-            onChange={(e) => setActiveSession(e.target.value)}
-            className="glass-panel-subtle px-2 py-1 rounded text-cyan-300 font-mono text-xs border border-white/10 w-28"
-          />
-        </div>
+      <div className="glass-panel p-3 rounded-xl border border-white/10 flex flex-wrap items-center gap-3">
+        <button className={`${btn} bg-emerald-600 text-white`} onClick={() => { if (cursor >= total) setCursor(0); setPlaying(true); }} disabled={!total}>▶ Play</button>
+        <button className={`${btn} bg-white/5 text-neutral-300`} onClick={() => setPlaying(false)}>⏸ Pause</button>
+        <button className={`${btn} bg-white/5 text-neutral-300`} onClick={() => { setPlaying(false); setCursor((c) => Math.min(total, c + 1)); }}>⏭ Step</button>
+        <button className={`${btn} bg-white/5 text-neutral-300`} onClick={() => { setPlaying(false); setCursor(0); }}>⏮ Restart</button>
+        <select value={speed} onChange={(e) => setSpeed(e.target.value as keyof typeof SPEEDS)} className="bg-neutral-900 text-cyan-300 text-xs rounded px-2 py-1 border border-white/10">
+          {Object.keys(SPEEDS).map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <input type="range" min={0} max={total} value={cursor} onChange={(e) => { setPlaying(false); setCursor(Number(e.target.value)); }} className="flex-1 min-w-[200px] accent-cyan-500" aria-label="Replay position" />
+        <span className="font-mono text-xs text-neutral-400">{cursor} / {total} events</span>
       </div>
-
-      {/* Stream Viewer */}
-      <EventFeed session={activeSession} backlog="paced" />
+      <AgentGraph lab={lab} live={false} />
+      <div className="grid lg:grid-cols-2 gap-4">
+        <div className="glass-panel rounded-xl border border-white/10 p-2"><CandidateFunnel lab={lab} /></div>
+        <div className="glass-panel rounded-xl border border-white/10 p-2"><ProgressChart lab={lab} /></div>
+      </div>
+      <ChampionCard champ={lab.best} title="Best champion at this point" />
+      <EventFeed upto={cursor} />
     </section>
   );
 }

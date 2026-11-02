@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { EquationView } from "../components/EquationView";
+import { Formula } from "../components/Formula";
 import { fetchLatestRegions, fetchMatrix } from "../api/client";
 
 // Offline samples: shown ONLY when the backend has no live candidates.
@@ -42,7 +43,7 @@ const SAMPLE_CANDIDATES = [
 ];
 
 export function CandidateInspector({ session = "default" }: { session?: string }) {
-  const matrix = useQuery({ queryKey: ["matrix", session], queryFn: () => fetchMatrix(session) });
+  const matrix = useQuery({ queryKey: ["matrix", session], queryFn: () => fetchMatrix(session), refetchInterval: 5000 });
   const regions = useQuery({ queryKey: ["regions", session], queryFn: () => fetchLatestRegions(session) });
   const [selectedIdx, setSelectedIdx] = useState(0);
 
@@ -101,7 +102,12 @@ export function CandidateInspector({ session = "default" }: { session?: string }
 
       {/* Main Formula Card */}
       <div className="space-y-3">
-        <EquationView tex={liveId ?? cand.formula} label={`Anisotropy Correction Tensor · ${liveId ?? cand.id}`} />
+        {liveId ? (
+          // live ids are DSL expressions, not TeX: render through SymPy LaTeX
+          <div className="glass-panel rounded-xl p-4 border border-cyan-500/20 overflow-x-auto"><Formula expr={liveId} block /></div>
+        ) : (
+          <EquationView tex={cand.formula} label={`Anisotropy Correction Tensor · ${cand.id}`} />
+        )}
         {isLive && (
           <div className="glass-panel p-4 rounded-xl border border-white/10 text-xs text-neutral-300">
             <span className="font-mono text-cyan-300">{liveId}</span>

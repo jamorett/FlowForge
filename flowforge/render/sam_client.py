@@ -80,23 +80,37 @@ def local_segment(image_path: str) -> list[dict[str, Any]]:
     if errors.ndim != 2 or errors.size == 0 or not np.all(np.isfinite(errors)):
         return [{"region": "global", "box": [0, 0, 100, 100],
                  "severity": "medium", "source": "local-fallback"}]
-    threshold = float(np.percentile(errors, 90))
-    high_mask = errors >= threshold
-    h, w = errors.shape
+    from scipy import ndimage
 
-    rows, cols = np.where(high_mask)
-    if len(rows) == 0:
+    fluid = errors > 0  # rasterized maps hold exactly 0 outside the fluid (e.g. under the hill)
+    if not fluid.any():
         return []
-    box = [int(cols.min()), int(rows.min()), int(cols.max()), int(rows.max())]
-    return [
-        {
-            "region": "separation_bubble" if box[0] < w // 2 else "shear_layer",
-            "box": box,
-            "max_error": float(errors.max()),
-            "mean_error": float(errors[high_mask].mean()),
-            "source": "local-fallback",
-        }
-    ]
+    threshold = float(np.percentile(errors[fluid], 90))
+    high_mask = fluid & (errors >= threshold)
+    if high_mask.sum() > 0.2 * fluid.sum():  # ties at the threshold (flat background) would select everything
+        high_mask = fluid & (errors > threshold)
+    labels, n = ndimage.label(high_mask)
+    if n == 0:  # uniform error: no localized hot spot, say so instead of returning nothing
+        rows, cols = np.where(fluid)
+        return [{"region": "uniform_error", "box": [int(cols.min()), int(rows.min()), int(cols.max()), int(rows.max())],
+                 "max_error": float(errors[fluid].max()), "mean_error": float(errors[fluid].mean()),
+                 "source": "local-fallback"}]
+    # Separate high-error blobs, biggest first (at most 3): one box around all of them
+    # would span the whole domain and locate nothing.
+    blobs = []
+    for k in range(1, n + 1):
+        rows, cols = np.where(labels == k)
+        if len(rows) < 4:
+            continue
+        vals = errors[rows, cols]
+        blobs.append({"region": f"high_error_{len(blobs) + 1}",
+                      "box": [int(cols.min()), int(rows.min()), int(cols.max()), int(rows.max())],
+                      "max_error": float(vals.max()), "mean_error": float(vals.mean()),
+                      "area_px": int(len(rows)), "source": "local-fallback"})
+    blobs.sort(key=lambda b: b["area_px"] * b["mean_error"], reverse=True)
+    for i, b in enumerate(blobs[:3]):
+        b["region"] = f"high_error_{i + 1}"
+    return blobs[:3]
 
 
 def _png_size(image_path: Path) -> tuple[int, int]:
@@ -332,9 +346,14 @@ def segment_error_regions(image_path: str, use_api: bool = True,
             for r in refined:
                 if isinstance(r, dict):
                     r["refined_from_local_box"] = clusters[0]["box"]
+                    r.setdefault("source", "sam-3.1")
+            # SAM refined the largest local blob only; keep the other local blobs (each
+            # labelled local-fallback) so enabling SAM never drops evidence (measured
+            # 2026-11-01: on the hill it dropped the separated shear layer).
             return {"image": image_path, "source": "sam-3.1",
-                    "model": SAM_MODEL, "regions": refined,
-                    "detail": "SAM 3.1 box-refine of local proposal"}
+                    "model": SAM_MODEL, "regions": refined + clusters[1:],
+                    "detail": f"SAM 3.1 box-refine of the largest local proposal; "
+                              f"{len(clusters) - 1} other region(s) local-fallback"}
         if refined is not None:
             return {"image": image_path, "source": "sam-3.1",
                     "model": SAM_MODEL, "regions": [],

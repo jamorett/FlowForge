@@ -23,6 +23,7 @@ export function PhysicsView({ session }: { session: string }) {
   const [t, setT] = useState(0);
   const triRef = useRef<HTMLDivElement>(null);
   const geoRef = useRef<HTMLDivElement>(null);
+  const profRef = useRef<HTMLDivElement>(null);
   const anim = useRef<number | null>(null);
 
   useEffect(() => {
@@ -97,9 +98,30 @@ export function PhysicsView({ session }: { session: string }) {
           colorbar: { title: { text: "helps ↑ / hurts ↓", side: "right" }, tickfont: { color: "#94a3b8" } } } },
     ], { ...DARK, title: { text: "Where the closure helps (blue) or hurts (red)" },
       yaxis: { scaleanchor: "x", gridcolor: "#1e293b" }, xaxis: { gridcolor: "#1e293b" } });
+    if (profRef.current && view.b12) {
+      // b12 (shear anisotropy) vs height at 4 stations, drawn offset at each station: x = station + SCALE * b12.
+      const SCALE = 8;
+      const xmin = Math.min(...g.x), xmax = Math.max(...g.x), span = xmax - xmin;
+      const stations = [0.1, 0.35, 0.6, 0.85].map((f) => xmin + f * span);
+      const series = [["dns", "DNS (truth)", "#22d3ee"], ["rans", "RANS (SST)", "#f59e0b"], ["corrected", "RANS + candidate", "#f8fafc"]] as const;
+      const traces: unknown[] = [];
+      stations.forEach((xs, k) => {
+        const pts = g.x.map((x, i) => i).filter((i) => Math.abs(g.x[i] - xs) < span / 60).sort((a, b) => g.y[a] - g.y[b]);
+        for (const [key, label, color] of series) {
+          traces.push({ x: pts.map((i) => xs + SCALE * view.b12![key][i]), y: pts.map((i) => g.y[i]), mode: "lines+markers",
+            type: "scatter", name: label, legendgroup: key, showlegend: k === 0, line: { color, width: key === "dns" ? 3 : 1.5 },
+            marker: { size: 3, color }, hovertemplate: `${label}<br>x≈${xs.toFixed(2)} y=%{y:.3f}<extra></extra>` });
+        }
+        traces.push({ x: [xs, xs], y: [Math.min(...g.y), Math.max(...g.y)], mode: "lines", line: { color: "#334155", dash: "dot" }, hoverinfo: "skip", showlegend: false });
+      });
+      Plotly.newPlot(profRef.current, traces, { ...DARK, title: { text: `Equation vs reality: b₁₂ profiles at 4 stations (offset ×${SCALE})` },
+        xaxis: { title: { text: "x  (station + scaled b₁₂)" }, gridcolor: "#1e293b" }, yaxis: { title: { text: "y" }, gridcolor: "#1e293b" },
+        legend: { orientation: "h", y: -0.18 } });
+    }
     return () => {
       if (triRef.current) Plotly.purge(triRef.current);
       if (geoRef.current) Plotly.purge(geoRef.current);
+      if (profRef.current) Plotly.purge(profRef.current);
     };
   }, [view]);
 
@@ -162,6 +184,7 @@ export function PhysicsView({ session }: { session: string }) {
         <div ref={triRef} className="glass-panel rounded-xl h-[420px]" />
         <div ref={geoRef} className="glass-panel rounded-xl h-[420px]" />
       </div>
+      <div ref={profRef} className="glass-panel rounded-xl h-[440px]" />
     </div>
   );
 }

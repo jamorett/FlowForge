@@ -22,8 +22,12 @@ import re
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="FlowForge")
+# The UI runs on its own port (Vite/static, 5173); without this the browser blocks every REST call.
+app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+                   allow_methods=["GET", "POST"], allow_headers=["*"])
 PACE_SECONDS = 0.05
 TAIL_POLL_SECONDS = PACE_SECONDS
 # Bounded live-tail: ~1 s (20 polls x 50 ms) without new data ends the stream.
@@ -150,6 +154,8 @@ def physics_view(expression: str = "0", case: str = "periodic_hill_re5600", n: i
     return {"case": case, "expression": expression, "n": len(idx),
             "ratio": mse / mse0 if mse0 > 0 else None,
             "rans": lumley_xy(b_rans), "dns": lumley_xy(b_dns), "corrected": lumley_xy(b_rans + pred),
+            "b12": {"rans": np.round(b_rans[idx, 0, 1], 5).tolist(), "dns": np.round(b_dns[idx, 0, 1], 5).tolist(),
+                    "corrected": np.round((b_rans + pred)[idx, 0, 1], 5).tolist()},
             "geometry": {"x": np.round(coords[:, 0], 4).tolist(), "y": np.round(coords[:, 1], 4).tolist(),
                          "gain": np.round(err_rans - err_corr, 8).tolist()}}
 
@@ -173,6 +179,13 @@ def session_state(session: str = "default") -> dict:
     types: dict[str, int] = {}
     for e in events:
         types[str(e.get("type", "unknown"))] = types.get(str(e.get("type", "unknown")), 0) + 1
+    from flowforge.agents.runtime.client import FALLBACK_PRICE_PER_M
+
+    # Model-call records carry only total tokens (no in/out split): bill all at the
+    # highest rate, so the figure is an upper bound like the runtime meter.
+    tokens = sum(int(e["tokens"]) for e in events if isinstance(e.get("tokens"), (int, float)))
+    rounds = sorted({e["round"] for e in events if isinstance(e.get("round"), int)})
+    steps = [e for e in events if e.get("step")]
     return {
         "session": session,
         "exists": _events_path(session).exists(),
@@ -180,6 +193,10 @@ def session_state(session: str = "default") -> dict:
         "event_types": types,
         "pace_seconds": PACE_SECONDS,
         "events_per_second": round(1.0 / PACE_SECONDS),
+        "tokens": tokens,
+        "dollars_upper": round(tokens * FALLBACK_PRICE_PER_M[1] / 1e6, 4),
+        "rounds": rounds,
+        "last_step": steps[-1].get("step") if steps else None,
     }
 
 
@@ -258,7 +275,7 @@ def matrix(session: str = "default") -> dict:
 
 @app.post("/api/rounds/start")
 def start_round(session: str = "default", mock: bool = True,
-                round_no: int = 1) -> dict:
+                round_no: int | None = None) -> dict:
     """Start a research round in the background (mock by default: no spend).
 
     The round appends to ``runs/<session>/events.jsonl``, which the UI
@@ -274,6 +291,9 @@ def start_round(session: str = "default", mock: bool = True,
     existing = _round_threads.get(session)
     if existing is not None and existing.is_alive():
         return {"status": "already_running", "session": session}
+    if round_no is None:  # continue the session: the UI never sends one, so every start used to be round 1
+        done = [e["round"] for e in _read_events(session) if isinstance(e.get("round"), int)]
+        round_no = max(done, default=0) + 1
 
     def _run() -> None:
         try:
@@ -286,7 +306,7 @@ def start_round(session: str = "default", mock: bool = True,
                               name=f"round-{session}")
     _round_threads[session] = thread
     thread.start()
-    return {"status": "started", "session": session, "mock": mock,
+    return {"status": "started", "session": session, "mock": mock, "round": round_no,
             "events": str(_events_path(session))}
 
 
@@ -343,12 +363,138 @@ def latest_regions(session: str = "default", use_api: bool = False) -> dict:
                 "regions": [], "detail": f"segmentation failed: {exc}"}
 
 
+@app.get("/api/latex")
+def latex(expr: str) -> dict:
+    """Validated DSL expression -> LaTeX (falls back to the raw text, flagged, if it does not parse)."""
+    import sympy as sp
+
+    from flowforge.dsl.parser import validate_candidate
+
+    try:
+        tex = sp.latex(validate_candidate(expr))
+    except Exception as exc:  # display helper: never fail the page over one bad expression
+        return {"expr": expr, "latex": None, "error": str(exc)[:200]}
+    for k in ("1", "2", "3", "4"):
+        tex = tex.replace(f"T_{{{k}}}", f"T^{{({k})}}").replace(f"I_{{{k}}}", f"I_{k}")
+    return {"expr": expr, "latex": tex}
+
+
+_ARMS_FILE = re.compile(r"^[A-Za-z0-9_.-]+\.json$")
+
+
+@app.get("/api/arms")
+def arms_results() -> list[dict]:
+    """Arms result files under runs/arms (newest first), each seed row enriched with its DL."""
+    from flowforge.dsl.parser import complexity, validate_candidate
+    from flowforge.elegance.engine import description_length
+
+    root = Path("runs") / "arms"
+    out = []
+    for f in sorted(root.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True) if root.is_dir() else []:
+        if not _ARMS_FILE.match(f.name):
+            continue
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(data, dict) or "arms" not in data:
+            continue
+        for arm in data["arms"].values():
+            for row in arm.get("seeds", []):
+                expr = row.get("expression")
+                try:  # same DL as the champion rule (structure bits; constants not counted)
+                    row["dl"] = description_length(complexity(validate_candidate(expr)), []) if expr else None
+                except Exception:
+                    row["dl"] = None
+        out.append({"file": f.name, "modified": f.stat().st_mtime, **data})
+    return out
+
+
+_ARTIFACT = re.compile(r"^[A-Za-z0-9_.-]+\.png$")
+
+
+@app.get("/api/artifact")
+def artifact(session: str, name: str):
+    """A rendered PNG (analyst error map) from runs/<session>/; names are strictly validated."""
+    from fastapi import HTTPException
+    from fastapi.responses import FileResponse
+
+    if not _SAFE_SESSION.match(session) or not _ARTIFACT.match(name):
+        raise HTTPException(status_code=400, detail="invalid session or file name")
+    path = Path("runs") / session / name
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="not found")
+    return FileResponse(path, media_type="image/png")
+
+
+from pydantic import BaseModel  # noqa: E402  (run-control request bodies)
+
+
+class SessionRunRequest(BaseModel):
+    session: str
+    rounds: int = 1
+    groups: int = 1
+    redteam: bool = True
+    mock: bool = True
+    budget_usd: float = 1.0
+    confirm_live: bool = False
+    sam: bool = False
+
+
+class ExperimentRequest(BaseModel):
+    rounds: int = 5
+    groups: int = 2
+    seeds: list[int] = [42, 43, 44]
+    budget_usd: float = 15.0
+    dry_run: bool = False
+    archive_existing: bool = False
+    confirm_live: bool = False
+    sam: bool = False
+
+
+@app.get("/api/runs")
+def list_runs() -> dict:
+    """Runs started from the UI (this server process), newest first, plus presets and limits."""
+    from flowforge.api import run_control as rc
+
+    return {"runs": rc.MANAGER.list(), "presets": rc.PRESETS,
+            "limits": {"max_rounds": rc.MAX_ROUNDS, "max_groups": rc.MAX_GROUPS,
+                       "session_dollar_limit": rc._session_cap(), "usd_per_round_group": rc.EST_USD_PER_ROUND_GROUP}}
+
+
+@app.post("/api/runs/session")
+def start_session_run(req: SessionRunRequest) -> dict:
+    from flowforge.api import run_control as rc
+
+    return rc.MANAGER.start_session(req.session, req.rounds, req.groups, req.redteam, req.mock,
+                                    req.budget_usd, req.confirm_live, req.sam)
+
+
+@app.post("/api/runs/experiment")
+def start_experiment_run(req: ExperimentRequest) -> dict:
+    from flowforge.api import run_control as rc
+
+    return rc.MANAGER.start_experiment(req.rounds, req.groups, list(req.seeds), req.budget_usd,
+                                       req.dry_run, req.archive_existing, req.confirm_live, req.sam)
+
+
+@app.post("/api/runs/{run_id}/{action}")
+def control_run(run_id: str, action: str) -> dict:
+    from flowforge.api import run_control as rc
+
+    if action not in ("pause", "resume", "stop", "kill"):
+        return {"status": "rejected", "reason": "action must be pause, resume, stop or kill"}
+    return rc.MANAGER.control(run_id, action)
+
+
 @app.websocket("/ws/events")
-async def ws_events(ws: WebSocket, session: str = "default", backlog: str = "paced") -> None:
+async def ws_events(ws: WebSocket, session: str = "default", backlog: str = "paced", skip: int = 0) -> None:
     """Stream a session's events. ``backlog="instant"`` sends the events already on disk at once
     (live view: no waiting for history); only events appended afterwards are paced. The default
-    paces everything, which the Replay page uses to animate a recorded session."""
+    paces everything, which the Replay page uses to animate a recorded session. ``skip``: events
+    the client already holds (reconnect after the idle end) are not resent."""
     await ws.accept()
+    to_skip = max(int(skip), 0)
     try:
         path = _events_path(session)
         replay = os.environ.get("FLOWFORGE_REPLAY") == "1"
@@ -382,6 +528,9 @@ async def ws_events(ws: WebSocket, session: str = "default", backlog: str = "pac
                 for line in lines:
                     if not line.strip():
                         continue
+                    if to_skip:
+                        to_skip -= 1
+                        continue
                     await _send(line)
                 in_backlog = False
                 if replay:
@@ -398,7 +547,7 @@ async def ws_events(ws: WebSocket, session: str = "default", backlog: str = "pac
 
         # Flush a final unterminated line (finite/replay files and a
         # writer that finished without a trailing newline).
-        if pending.strip():
+        if pending.strip() and not to_skip:
             await _send(pending.strip())
         # Prompt end: no trailing sleep after the last event / decision.
         await ws.send_text(json.dumps({"type": "end", "sent": sent}))

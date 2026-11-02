@@ -145,3 +145,19 @@ def test_ws_replay_mode_ends_promptly_without_trailing_sleep(tmp_path, monkeypat
     # Only the inter-event pacing gaps: no tail polls, no trailing sleep.
     assert sleeps == [srv.PACE_SECONDS, srv.PACE_SECONDS]
     assert timeline[-1][0] == "send"
+
+
+def test_ws_reconnect_skip_resends_only_new_events(tmp_path, monkeypatch):
+    monkeypatch.setenv("FLOWFORGE_REPLAY", "1")
+    p = tmp_path / "runs" / "probe"
+    p.mkdir(parents=True)
+    (p / "events.jsonl").write_text(
+        "\n".join(json.dumps({"type": "tick", "i": i}) for i in range(5)) + "\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(srv.asyncio, "sleep", lambda d: _Aw())
+    monkeypatch.chdir(tmp_path)
+    ws = _FakeWS([])
+    _drive(srv.ws_events(ws, session="probe", skip=3))  # client already holds ticks 0..2
+    payloads = [json.loads(m) for m in ws.msgs]
+    assert [m["i"] for m in payloads if m.get("type") == "tick"] == [3, 4]
+    assert payloads[-1] == {"type": "end", "sent": 2}
