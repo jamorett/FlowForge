@@ -126,8 +126,13 @@ def _rebuild_with_values(text: str, num_tokens: list[tokenize.TokenInfo], values
     return out
 
 
-def fit_expression(expression: str, invariants, basis, target, snap: bool = True) -> dict:
-    """Fit free constants with least squares; never raises for bad candidates."""
+def fit_expression(expression: str, invariants, basis, target, snap: bool = True, b_rans=None) -> dict:
+    """Fit free constants with least squares; never raises for bad candidates.
+
+    With ``b_rans`` the fit is realizability-constrained: if the optimum makes
+    ``b_rans + correction`` non-realizable anywhere, constants back off along
+    the line from the proposed values to the optimum (largest realizable step).
+    """
     import sympy
     from scipy.optimize import least_squares
 
@@ -191,6 +196,28 @@ def fit_expression(expression: str, invariants, basis, target, snap: bool = True
         return _result(original, original, [], float(mse_before), None, "fit_failed")
     if opt.shape != x0.shape or not np.all(np.isfinite(opt)):
         return _result(original, original, [], float(mse_before), None, "fit_failed")
+
+    def realizable(params) -> bool:
+        # Same check as ladder.rung3_full: total anisotropy, rows finite in both.
+        from flowforge.physics.tensors import is_realizable
+        try:
+            pred = np.asarray(candidate_anisotropy(build_text(np.asarray(params, dtype=float)), invariants, basis))
+        except errors:
+            return False
+        base = np.asarray(b_rans)
+        ok = np.isfinite(pred).reshape(len(pred), -1).all(1) & np.isfinite(base).reshape(len(base), -1).all(1)
+        return bool(ok.any()) and bool(np.all(is_realizable((base + pred)[ok])))
+
+    if b_rans is not None and not realizable(opt):
+        # Coarse scan finds a realizable step (x0 itself may fail), then bisect upward.
+        ok_steps = [t / 10 for t in range(10) if realizable(x0 + (t / 10) * (opt - x0))]
+        if ok_steps:
+            lo = max(ok_steps)
+            hi = lo + 0.1
+            for _ in range(12):
+                mid = 0.5 * (lo + hi)
+                lo, hi = (mid, hi) if realizable(x0 + mid * (opt - x0)) else (lo, mid)
+            opt = x0 + lo * (opt - x0)
     fitted = opt
     if snap:
         from flowforge.dsl.fitting import snap_constants
@@ -208,6 +235,8 @@ def fit_expression(expression: str, invariants, basis, target, snap: bool = True
             fitted = np.asarray(snap_constants(np.asarray(opt, dtype=float), err), dtype=float)
         except errors:
             pass
+        if b_rans is not None and realizable(opt) and not realizable(fitted):
+            fitted = opt  # a snap must not cost realizability
     if fitted.shape != x0.shape or not np.all(np.isfinite(fitted)):
         return _result(original, original, [], float(mse_before), None, "fit_failed")
     if _at_bound(fitted):

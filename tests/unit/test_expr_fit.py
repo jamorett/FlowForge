@@ -91,3 +91,19 @@ def test_overflow_candidate_never_raises():
     res = fit_expression("0.05 * exp(50.0 * I1) * T2", inv, basis, target, snap=False)
     assert res["status"] == "fit_failed"
     assert res["mse_after"] is None
+
+
+def test_realizability_constrained_fit_backs_off():
+    import numpy as np
+
+    from flowforge.physics.tensors import is_realizable
+
+    inv, basis, _ = synthetic_fields(n=32, seed=0)
+    b_rans = np.zeros_like(basis["T1"])
+    target = candidate_anisotropy("50 * T1", inv, basis)  # far outside the barycentric triangle
+    free = fit_expression("0.01 * T1", inv, basis, target, snap=False)
+    assert not np.all(is_realizable(candidate_anisotropy(free["expression"], inv, basis)))
+    con = fit_expression("0.01 * T1", inv, basis, target, snap=False, b_rans=b_rans)
+    assert con["status"] == "ok"
+    assert np.all(is_realizable(b_rans + candidate_anisotropy(con["expression"], inv, basis)))
+    assert con["mse_after"] < con["mse_before"]  # still moved toward the target

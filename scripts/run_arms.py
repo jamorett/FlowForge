@@ -211,7 +211,7 @@ def make_seed_row(seed: int, metric: float | None, expression: str | None,
 
 
 def round_metric(result: dict) -> float | None:
-    """Return the last round champion ratio, or None when unusable."""
+    """Return a round's champion ratio, or None when unusable."""
     if not isinstance(result, dict):
         return None
     if result.get("status") == "error":
@@ -318,35 +318,32 @@ def select_seed_champion(
 ) -> tuple[float | None, str | None, int | None, bool]:
     """Pick the seed champion from collected round results.
 
-    Uses the last round champion when usable; otherwise falls back to the
-    earlier round with the best train-side score. The returned metric is
-    always the champion ``worst_validation_ratio``.
+    Ranking is train-side first (``round_train_score``: train ratio, then
+    mean attack ratio). The validation ratio only breaks ties, and only
+    decides when no round logged train-side data at all (legacy rounds);
+    every live champion carries a train score, so in practice selection
+    never reads validation. The returned metric is always the champion
+    ``worst_validation_ratio``. ``fallback`` is True when the last round
+    had no usable champion.
     """
     if not round_results:
         return (None, None, None, False)
-    last_no, last_result = round_results[-1]
-    last_metric = round_metric(last_result)
-    if last_metric is not None:
-        return (last_metric, round_expression(last_result), int(last_no), False)
-    best_metric: float | None = None
-    best_expression: str | None = None
-    best_round: int | None = None
-    best_score: float | None = None
-    for round_no, result in round_results[:-1]:
+    _, last_result = round_results[-1]
+    fallback = round_metric(last_result) is None
+    ranked: list[tuple[int, float, float, float, int, str | None]] = []
+    for round_no, result in round_results:
         metric = round_metric(result)
         if metric is None:
             continue
-        score = round_train_score(result)
-        if score is None:
-            continue
-        if best_score is None or score < best_score:
-            best_score = score
-            best_metric = metric
-            best_expression = round_expression(result)
-            best_round = int(round_no)
-    if best_round is not None:
-        return (best_metric, best_expression, best_round, True)
-    return (None, None, None, False)
+        train = round_train_score(result)
+        ranked.append((0 if train is not None else 1,
+                       train if train is not None else metric,
+                       metric, int(round_no), round_expression(result)))
+    if not ranked:
+        return (None, None, None, False)
+    ranked.sort(key=lambda item: (item[0], item[1], item[2]))
+    _, _, metric, best_round, expression = ranked[0]
+    return (metric, expression, best_round, fallback)
 
 
 def baseline_metric(baseline: dict) -> float | None:

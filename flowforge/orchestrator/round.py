@@ -429,7 +429,7 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
     fits: list[dict] = []
     fitted_flat: list[str] = []
     for expr in expressions:
-        fit = fit_expression(expr, inv, basis, target, snap=True)
+        fit = fit_expression(expr, inv, basis, target, snap=True, b_rans=b_rans)
         fits.append(json.loads(json.dumps(fit, default=float)))
         fitted_flat.append(str(fits[-1].get("expression", expr)))
     idx = 0

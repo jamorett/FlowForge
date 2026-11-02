@@ -68,7 +68,9 @@ def _install_fakes(monkeypatch, tmp_path):
         ladder_mod, "rung3_full",
         lambda rung2, inv, basis, target, b_rans=None: list(rung2),
     )
-    monkeypatch.setattr(expr_fit_mod, "fit_expression", lambda expr, inv, basis, target, snap=True: {"expression": str(expr)})
+    monkeypatch.setattr(expr_fit_mod, "fit_expression",
+        lambda expr, inv, basis, target, snap=True, b_rans=None: {"expression": str(expr), "status": "ok",
+            "constants": [], "mse_before": 1.0, "mse_after": 0.5, "original": str(expr)})
 
     def fake_dispatch(role, runtime, context):
         class Res:
