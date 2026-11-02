@@ -170,3 +170,18 @@ def test_stop_file_halts_before_next_round(tmp_path, monkeypatch) -> None:
     incomplete = [False]
     run_arms.collect_swarm_arm("swarm", [42], 5, 1, 10.0, False, [0.0], incomplete)
     assert calls == [1] and incomplete[0] and run_arms.STOPPED[0]  # round 1 finished, round 2 never started
+
+
+def test_dry_run_keeps_attack_library_clean(tmp_path, monkeypatch) -> None:
+    from flowforge.baselines import sparse as sparse_module
+    from flowforge.orchestrator import round as round_module
+    from scripts import run_arms
+
+    seen = []
+    monkeypatch.setattr(round_module, "run_round", lambda r, **kw: seen.append(str(round_module.ATTACKS_DIR)) or
+                        {"status": "ok", "champion": None, "dollars_spent": 0.0})
+    monkeypatch.setattr(sparse_module, "evaluate_sparse_baseline", lambda seed=42, **kw: {"expression": "I1", "worst_validation_ratio": 0.9})
+    before = round_module.ATTACKS_DIR
+    run_arms.main(["--dry-run", "--rounds", "1", "--groups", "1", "--budget-usd", "1", "--out", str(tmp_path / "a.json")])
+    assert seen and all("dryrun-attacks" in s for s in seen)  # never library/attacks during a dry run
+    assert round_module.ATTACKS_DIR == before  # restored afterwards

@@ -546,8 +546,13 @@ def main(argv: list[str] | None = None) -> dict | None:
             active = {}
         return dispatch_role_mock(role, active)
 
+    from flowforge.orchestrator import round as round_module
+
+    original_attacks_dir = round_module.ATTACKS_DIR
     if dry_run:
         dispatcher_module.dispatch_role = dry_dispatch  # type: ignore[assignment]
+        # mocked proposers must not write "breaks" into the permanent attack library
+        round_module.ATTACKS_DIR = Path("runs") / "arms" / "dryrun-attacks"
     try:
         spent = [0.0]
         incomplete = [False]
@@ -575,6 +580,7 @@ def main(argv: list[str] | None = None) -> dict | None:
     finally:
         if dry_run:
             dispatcher_module.dispatch_role = original_dispatch  # type: ignore[assignment]
+            round_module.ATTACKS_DIR = original_attacks_dir
     out_file = Path(out_path)
     out_file.parent.mkdir(parents=True, exist_ok=True)
     out_file.write_text(json.dumps(output, indent=2, sort_keys=True), encoding="utf-8")
