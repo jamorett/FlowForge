@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchSessionState, startRound } from "../api/client";
 import { AgentGraph } from "../components/AgentGraph";
-import { CandidateFunnel, ProgressChart } from "../components/CandidateFunnel";
+import { CandidateFunnel, ClusterView, ProgressChart } from "../components/CandidateFunnel";
 import { EventFeed } from "../components/EventFeed";
 import { ChampionCard, RedTeamArena, SamPanel } from "../components/LabPanels";
 import { useEvents, useLab } from "../state/events";
@@ -32,7 +32,7 @@ export function MissionControl({ session = "default" }: { session?: string }) {
     setStarting(true); setNotice(null);
     try {
       const res = await startRound(session, !live);
-      setNotice(res.status === "started" ? `Round started in “${res.session}” (${res.mock ? "mock, no spend" : "LIVE, spends API credits"}).`
+      setNotice(res.status === "started" ? `Round ${res.round ?? "?"} started in “${res.session}” (${res.mock ? "mock, no spend" : "LIVE, spends API credits"}).`
         : res.status === "already_running" ? `“${res.session}” already has a running round.` : `Start rejected: ${res.reason ?? res.status}.`);
     } catch (e) {
       setNotice(`API offline — start the FastAPI server first. (${e instanceof Error ? e.message : e})`);
@@ -75,9 +75,10 @@ export function MissionControl({ session = "default" }: { session?: string }) {
         <div className="glass-panel rounded-xl border border-white/10 p-2"><ProgressChart lab={lab} /></div>
       </div>
       <div className="grid lg:grid-cols-2 gap-4">
+        <div className="glass-panel rounded-xl border border-white/10 p-2"><ClusterView lab={lab} /></div>
         <ChampionCard champ={lab.best} />
-        <RedTeamArena lab={lab} redteamEnabled={!noRedTeam} />
       </div>
+      <RedTeamArena lab={lab} redteamEnabled={!noRedTeam} />
       <SamPanel lab={lab} session={session} />
       <EventFeed />
     </section>

@@ -55,3 +55,45 @@ export function ProgressChart({ lab }: { lab: Lab }) {
   });
   return <div ref={ref} className="w-full h-[320px]" />;
 }
+
+const FAMILIES = ["polynomial", "tanh", "rational (div)", "exp / sqrt", "mixed"];
+function family(expr: string): string {
+  const f = ["tanh", "div", "exp", "sqrt"].filter((k) => expr.includes(`${k}(`));
+  if (!f.length) return "polynomial";
+  if (f.length > 1) return "mixed";
+  return f[0] === "tanh" ? "tanh" : f[0] === "div" ? "rational (div)" : "exp / sqrt";
+}
+const tensors = (expr: string) => ["T1", "T2", "T3"].filter((t) => expr.includes(t)).join("+") || "scalar (T1)";
+
+/** Where the agents search: proposals grouped by tensor set × coefficient family. */
+export function ClusterView({ lab }: { lab: Lab }) {
+  const groups = new Map<string, { fam: string; ts: string; n: number; best?: number; champ: boolean; ex: string[] }>();
+  for (const c of lab.candidates) {
+    const fam = family(c.expr), ts = tensors(c.expr), key = `${fam}|${ts}`;
+    const g = groups.get(key) ?? { fam, ts, n: 0, champ: false, ex: [] };
+    g.n += 1;
+    if (c.mse !== undefined && (g.best === undefined || c.mse < g.best)) g.best = c.mse;
+    if (c.status === "champion") g.champ = true;
+    if (g.ex.length < 3) g.ex.push(c.expr);
+    groups.set(key, g);
+  }
+  const gs = [...groups.values()];
+  const tsList = [...new Set(gs.map((g) => g.ts))].sort();
+  const maxN = Math.max(1, ...gs.map((g) => g.n));
+  const ref = usePlot([
+    { type: "scatter", mode: "markers", name: "structure family",
+      x: gs.map((g) => FAMILIES.indexOf(g.fam)), y: gs.map((g) => tsList.indexOf(g.ts)),
+      text: gs.map((g) => `<b>${g.fam} · ${g.ts}</b><br>${g.n} proposals${g.champ ? " · produced a champion" : ""}` +
+        (g.best !== undefined ? `<br>best train MSE ${g.best.toExponential(2)}` : "") + `<br>${g.ex.join("<br>")}`),
+      hoverinfo: "text",
+      marker: { size: gs.map((g) => 14 + 46 * Math.sqrt(g.n / maxN)), sizemode: "diameter",
+        color: gs.map((g) => (g.best !== undefined ? Math.log10(g.best) : null)), colorscale: "Viridis", reversescale: true,
+        showscale: true, colorbar: { title: { text: "log10 best MSE", side: "right" }, tickfont: { color: "#94a3b8" } },
+        line: { color: gs.map((g) => (g.champ ? "#facc15" : "#0f172a")), width: gs.map((g) => (g.champ ? 3 : 1)) }, opacity: 0.9 } },
+  ], {
+    title: { text: "Where the agents search (bubble = # proposals, gold ring = produced a champion)" }, showlegend: false, hovermode: "closest",
+    xaxis: { tickvals: FAMILIES.map((_, i) => i), ticktext: FAMILIES, range: [-0.6, FAMILIES.length - 0.4], gridcolor: "#1e293b" },
+    yaxis: { tickvals: tsList.map((_, i) => i), ticktext: tsList, range: [-0.6, Math.max(tsList.length, 1) - 0.4], gridcolor: "#1e293b" },
+  });
+  return <div ref={ref} className="w-full h-[320px]" />;
+}

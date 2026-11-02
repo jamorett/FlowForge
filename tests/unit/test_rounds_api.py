@@ -31,3 +31,17 @@ def test_start_round_rejects_bad_session() -> None:
 
     res = srv.start_round(session="../escape", mock=True)
     assert res["status"] == "rejected"
+
+
+def test_start_round_without_round_no_continues_session(tmp_path, monkeypatch) -> None:
+    import flowforge.api.server as srv
+
+    monkeypatch.chdir(tmp_path)
+    d = Path("runs") / "cont"
+    d.mkdir(parents=True)
+    (d / "events.jsonl").write_text(json.dumps({"type": "champion", "round": 3}) + "\n", encoding="utf-8")
+    started = []
+    monkeypatch.setattr("flowforge.orchestrator.round.run_round", lambda r, **kw: started.append(r))
+    res = srv.start_round(session="cont", mock=True)
+    srv._round_threads["cont"].join(timeout=10)
+    assert res["round"] == 4 and started == [4]

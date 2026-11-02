@@ -45,7 +45,7 @@ export function eventsSocket(session = "default", backlog: "instant" | "paced" =
   return new WebSocket(`${wsBase}/ws/events?session=${encodeURIComponent(session)}&backlog=${backlog}&skip=${skip}`);
 }
 export interface RegionsData { image: string | null; source: string; model: string | null; regions: { region: string; box: number[]; max_error?: number; mean_error?: number; severity?: string; source?: string }[]; detail: string }
-export interface StartRoundResult { status: string; session?: string; mock?: boolean; events?: string; reason?: string }
+export interface StartRoundResult { status: string; session?: string; mock?: boolean; round?: number; events?: string; reason?: string }
 export async function startRound(session = "default", mock = true): Promise<StartRoundResult> {
   const r = await fetch(`${base}/api/rounds/start?session=${encodeURIComponent(session)}&mock=${mock ? "true" : "false"}`, { method: "POST" });
   if (!r.ok) throw new Error(`start round ${r.status}`);

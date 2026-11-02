@@ -275,7 +275,7 @@ def matrix(session: str = "default") -> dict:
 
 @app.post("/api/rounds/start")
 def start_round(session: str = "default", mock: bool = True,
-                round_no: int = 1) -> dict:
+                round_no: int | None = None) -> dict:
     """Start a research round in the background (mock by default: no spend).
 
     The round appends to ``runs/<session>/events.jsonl``, which the UI
@@ -291,6 +291,9 @@ def start_round(session: str = "default", mock: bool = True,
     existing = _round_threads.get(session)
     if existing is not None and existing.is_alive():
         return {"status": "already_running", "session": session}
+    if round_no is None:  # continue the session: the UI never sends one, so every start used to be round 1
+        done = [e["round"] for e in _read_events(session) if isinstance(e.get("round"), int)]
+        round_no = max(done, default=0) + 1
 
     def _run() -> None:
         try:
@@ -303,7 +306,7 @@ def start_round(session: str = "default", mock: bool = True,
                               name=f"round-{session}")
     _round_threads[session] = thread
     thread.start()
-    return {"status": "started", "session": session, "mock": mock,
+    return {"status": "started", "session": session, "mock": mock, "round": round_no,
             "events": str(_events_path(session))}
 
 
