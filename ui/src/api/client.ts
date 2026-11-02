@@ -76,3 +76,27 @@ export function artifactUrl(session: string, imagePath: string): string {
   const name = imagePath.split(/[\\/]/).pop() ?? ""; // event paths use Windows separators
   return `${base}/api/artifact?session=${encodeURIComponent(session)}&name=${encodeURIComponent(name)}`;
 }
+
+// ---- run control (UI run panel) ----
+export interface RunInfo { id: string; kind: "session" | "experiment"; params: Record<string, any>; status: string;
+  started: number; ended: number | null; rounds_done: number; round_now: number | null; spent_usd: number;
+  sessions: string[]; out_file: string | null; log_file: string | null; message: string }
+export interface RunPreset { id: string; label: string; kind: "session" | "experiment"; description: string; params: Record<string, any> }
+export interface RunsData { runs: RunInfo[]; presets: RunPreset[];
+  limits: { max_rounds: number; max_groups: number; session_dollar_limit: number; usd_per_round_group: number } }
+export interface RunStartResult { status: string; reason?: string; needs_archive?: string[]; run?: RunInfo }
+export async function fetchRuns(): Promise<RunsData> {
+  const r = await fetch(`${base}/api/runs`);
+  if (!r.ok) throw new Error(`runs ${r.status}`);
+  return r.json();
+}
+async function postJson<T>(path: string, body?: unknown): Promise<T> {
+  const r = await fetch(`${base}${path}`, { method: "POST", headers: { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body) });
+  if (!r.ok) throw new Error(`${path} ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  return r.json() as Promise<T>;
+}
+export const startSessionRun = (b: Record<string, unknown>) => postJson<RunStartResult>("/api/runs/session", b);
+export const startExperimentRun = (b: Record<string, unknown>) => postJson<RunStartResult>("/api/runs/experiment", b);
+export const controlRun = (id: string, action: "pause" | "resume" | "stop" | "kill") =>
+  postJson<RunStartResult>(`/api/runs/${encodeURIComponent(id)}/${action}`);

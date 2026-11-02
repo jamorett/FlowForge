@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { fetchSessionState, startRound } from "../api/client";
+import { fetchSessionState } from "../api/client";
 import { AgentGraph } from "../components/AgentGraph";
 import { CandidateFunnel, ClusterView, ProgressChart } from "../components/CandidateFunnel";
 import { EventFeed } from "../components/EventFeed";
 import { ChampionCard, RedTeamArena, SamPanel } from "../components/LabPanels";
+import { RunPanel } from "../components/RunPanel";
 import { useEvents, useLab } from "../state/events";
 
 function Metric({ label, value, sub, accent = "text-white" }: { label: string; value: string; sub?: string; accent?: string }) {
@@ -17,27 +18,13 @@ function Metric({ label, value, sub, accent = "text-white" }: { label: string; v
   );
 }
 
-export function MissionControl({ session = "default" }: { session?: string }) {
+export function MissionControl({ session = "default", onWatch = () => {} }: { session?: string; onWatch?: (s: string) => void }) {
   const st = useQuery({ queryKey: ["session", session], queryFn: () => fetchSessionState(session), refetchInterval: 5000 });
   const { connected, lastEventAt } = useEvents();
   const lab = useLab();
   const [now, setNow] = useState(Date.now());
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
-  const [live, setLive] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [starting, setStarting] = useState(false);
   const noRedTeam = session.includes("no_redteam");
-
-  async function onStart() { // starts a round in the session being watched (no second session box)
-    setStarting(true); setNotice(null);
-    try {
-      const res = await startRound(session, !live);
-      setNotice(res.status === "started" ? `Round ${res.round ?? "?"} started in “${res.session}” (${res.mock ? "mock, no spend" : "LIVE, spends API credits"}).`
-        : res.status === "already_running" ? `“${res.session}” already has a running round.` : `Start rejected: ${res.reason ?? res.status}.`);
-    } catch (e) {
-      setNotice(`API offline — start the FastAPI server first. (${e instanceof Error ? e.message : e})`);
-    } finally { setStarting(false); }
-  }
 
   const idle = lastEventAt ? Math.round((now - lastEventAt) / 1000) : null;
   const survivors = lab.candidates.filter((c) => c.stage >= 5).length;
@@ -46,18 +33,7 @@ export function MissionControl({ session = "default" }: { session?: string }) {
 
   return (
     <section aria-label="Mission control" className="space-y-4">
-      <div className="glass-panel p-3 rounded-xl border border-white/10 flex flex-wrap items-center gap-3 text-xs">
-        <span className="text-neutral-400">Watching <span className="font-mono text-cyan-300">{session}</span></span>
-        <label className="flex items-center gap-2 text-neutral-300 cursor-pointer">
-          <input type="checkbox" checked={live} onChange={(e) => setLive(e.target.checked)} className="accent-cyan-500" />
-          Live (real API, spends credits)
-        </label>
-        <button onClick={onStart} disabled={starting}
-          className="px-3 py-1.5 rounded-lg font-semibold bg-gradient-to-r from-cyan-600 to-blue-600 text-white border border-cyan-400/40 disabled:opacity-50">
-          {starting ? "Starting…" : live ? "Start live round" : "Start mock round"}
-        </button>
-        {notice && <span className="text-neutral-400">{notice}</span>}
-      </div>
+      <RunPanel session={session} onWatch={onWatch} />
 
       <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
         <Metric label="Stream" value={connected ? "LIVE" : "offline"} accent={connected ? "text-emerald-300" : "text-neutral-500"}

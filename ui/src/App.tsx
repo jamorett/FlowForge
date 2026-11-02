@@ -108,7 +108,7 @@ export function App() {
 
         {/* View Pages */}
         <main className="transition-all duration-200">
-          {view === "Mission Control" && <MissionControl session={session} />}
+          {view === "Mission Control" && <MissionControl session={session} onWatch={setSession} />}
           {view === "Generalization Matrix" && <GeneralizationMatrix session={session} />}
           {view === "Candidate Inspector" && <CandidateInspector session={session} />}
           {view === "Physics View" && <PhysicsView session={session} />}

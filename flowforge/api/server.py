@@ -427,6 +427,64 @@ def artifact(session: str, name: str):
     return FileResponse(path, media_type="image/png")
 
 
+from pydantic import BaseModel  # noqa: E402  (run-control request bodies)
+
+
+class SessionRunRequest(BaseModel):
+    session: str
+    rounds: int = 1
+    groups: int = 1
+    redteam: bool = True
+    mock: bool = True
+    budget_usd: float = 1.0
+    confirm_live: bool = False
+
+
+class ExperimentRequest(BaseModel):
+    rounds: int = 5
+    groups: int = 2
+    seeds: list[int] = [42, 43, 44]
+    budget_usd: float = 15.0
+    dry_run: bool = False
+    archive_existing: bool = False
+    confirm_live: bool = False
+
+
+@app.get("/api/runs")
+def list_runs() -> dict:
+    """Runs started from the UI (this server process), newest first, plus presets and limits."""
+    from flowforge.api import run_control as rc
+
+    return {"runs": rc.MANAGER.list(), "presets": rc.PRESETS,
+            "limits": {"max_rounds": rc.MAX_ROUNDS, "max_groups": rc.MAX_GROUPS,
+                       "session_dollar_limit": rc._session_cap(), "usd_per_round_group": rc.EST_USD_PER_ROUND_GROUP}}
+
+
+@app.post("/api/runs/session")
+def start_session_run(req: SessionRunRequest) -> dict:
+    from flowforge.api import run_control as rc
+
+    return rc.MANAGER.start_session(req.session, req.rounds, req.groups, req.redteam, req.mock,
+                                    req.budget_usd, req.confirm_live)
+
+
+@app.post("/api/runs/experiment")
+def start_experiment_run(req: ExperimentRequest) -> dict:
+    from flowforge.api import run_control as rc
+
+    return rc.MANAGER.start_experiment(req.rounds, req.groups, list(req.seeds), req.budget_usd,
+                                       req.dry_run, req.archive_existing, req.confirm_live)
+
+
+@app.post("/api/runs/{run_id}/{action}")
+def control_run(run_id: str, action: str) -> dict:
+    from flowforge.api import run_control as rc
+
+    if action not in ("pause", "resume", "stop", "kill"):
+        return {"status": "rejected", "reason": "action must be pause, resume, stop or kill"}
+    return rc.MANAGER.control(run_id, action)
+
+
 @app.websocket("/ws/events")
 async def ws_events(ws: WebSocket, session: str = "default", backlog: str = "paced", skip: int = 0) -> None:
     """Stream a session's events. ``backlog="instant"`` sends the events already on disk at once

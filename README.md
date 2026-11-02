@@ -128,7 +128,12 @@ Prereqs: Python 3.12, Node 18+, Docker Desktop, a Meta Model API key.
    Open `http://localhost:5173`, pick a session in the top bar. Mission Control shows the
    live agent graph, candidate funnel, progress vs SST, champion, red-team arena and SAM
    error regions; Results shows the arms table; Replay re-plays a session at no cost.
-   Start with a mock round to validate the setup before running a live round.
+   **Run control** (Mission Control, top panel): presets (smoke test, live check, research
+   session, ablation, experiment dry run, full experiment) or custom session runs (rounds,
+   groups, red team on/off, mock/live, budget cap) and the 3-arm experiment (rounds, groups,
+   3 session seeds, budget, dry run, archive old sessions). Pause / resume / stop act between
+   rounds; experiments can also be killed. Live runs ask for confirmation with a cost estimate
+   and cannot exceed `session_dollar_limit`. Start with the free smoke test.
 
 Costs: live rounds and SAM calls consume API credits (approximately $0.60
 observed for the initial live rounds); mock mode and `FLOWFORGE_REPLAY=1`

@@ -151,3 +151,22 @@ def test_seed_without_champion_scores_as_sst() -> None:
     assert mod.seed_metric_or_no_champion(None, rejected[:2], 3) == (None, False)  # budget cut: missing
     errored = rejected[:2] + [(3, {"status": "error"})]
     assert mod.seed_metric_or_no_champion(None, errored, 3) == (None, False)  # error: missing
+
+
+def test_stop_file_halts_before_next_round(tmp_path, monkeypatch) -> None:
+    from flowforge.orchestrator import round as round_module
+    from scripts import run_arms
+
+    calls = []
+
+    def fake_run_round(round_no, **kwargs):
+        calls.append(round_no)
+        (tmp_path / "stop").write_text("", encoding="utf-8")  # user presses Stop during round 1
+        return {"status": "ok", "champion": {"expression": "I1*T1", "worst_validation_ratio": 0.8}, "dollars_spent": 0.1}
+
+    monkeypatch.setattr(round_module, "run_round", fake_run_round)
+    monkeypatch.setattr(run_arms, "CONTROL_DIR", tmp_path)
+    run_arms.STOPPED[0] = False
+    incomplete = [False]
+    run_arms.collect_swarm_arm("swarm", [42], 5, 1, 10.0, False, [0.0], incomplete)
+    assert calls == [1] and incomplete[0] and run_arms.STOPPED[0]  # round 1 finished, round 2 never started
