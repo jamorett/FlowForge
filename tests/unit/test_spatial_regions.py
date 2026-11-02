@@ -71,3 +71,25 @@ def test_sam_counts_as_spend(tmp_path, monkeypatch):
     monkeypatch.setattr(rc, "_session_cap", lambda: 50.0)
     res = rc.RunManager().start_session("s", 1, 1, True, mock=True, budget_usd=1.0, sam=True)
     assert "confirm_live" in res["reason"]
+
+
+def test_sam_box_refine_keeps_other_local_regions(tmp_path, monkeypatch):
+    import flowforge.render.sam_client as sc
+
+    coords, err = _blob_field()
+    far = (np.abs(coords[:, 0] - 7.0) < 0.5) & (np.abs(coords[:, 1] - 2.0) < 0.3)
+    err[far] = 0.9
+    img, _ = rasterize(coords, err, width=180)
+    png = str(render_png(img, tmp_path / "m.png"))
+    calls = []
+
+    def fake_api(path, prompt):  # concept prompt: 0 matches; box prompt: one refined box
+        calls.append(prompt)
+        return [] if len(calls) == 1 else [{"region": "error_region_1", "box": [1, 2, 3, 4]}]
+
+    monkeypatch.setattr(sc, "_api_enabled", lambda use_api: use_api)
+    monkeypatch.setattr(sc, "_sam_api_segment", fake_api)
+    out = sc.segment_error_regions(png, use_api=True)
+    sources = [r["source"] for r in out["regions"]]
+    assert out["source"] == "sam-3.1" and sources[0] == "sam-3.1" and "local-fallback" in sources[1:]
+    assert len(out["regions"]) >= 2  # SAM never drops the other local regions

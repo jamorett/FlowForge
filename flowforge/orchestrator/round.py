@@ -161,7 +161,7 @@ def _analyst_regions(expressions: list[str], session_dir: Path,
 
 def _regions_for_analyst(regions: list[dict]) -> list[dict]:
     """Compact, physical evidence for the Analyst prompt (no pixels, no image paths)."""
-    keep = ("region", "x_range", "y_range", "mean_error", "max_error", "severity")
+    keep = ("region", "x_range", "y_range", "mean_error", "max_error", "severity", "source")
     return [{"candidate": item["candidate"], "segmentation_source": item["source"],
              "illustrative": item["illustrative"],
              "regions": [{k: r[k] for k in keep if k in r} for r in item["regions"]]}

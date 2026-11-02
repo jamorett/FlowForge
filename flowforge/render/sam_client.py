@@ -346,9 +346,14 @@ def segment_error_regions(image_path: str, use_api: bool = True,
             for r in refined:
                 if isinstance(r, dict):
                     r["refined_from_local_box"] = clusters[0]["box"]
+                    r.setdefault("source", "sam-3.1")
+            # SAM refined the largest local blob only; keep the other local blobs (each
+            # labelled local-fallback) so enabling SAM never drops evidence (measured
+            # 2026-11-01: on the hill it dropped the separated shear layer).
             return {"image": image_path, "source": "sam-3.1",
-                    "model": SAM_MODEL, "regions": refined,
-                    "detail": "SAM 3.1 box-refine of local proposal"}
+                    "model": SAM_MODEL, "regions": refined + clusters[1:],
+                    "detail": f"SAM 3.1 box-refine of the largest local proposal; "
+                              f"{len(clusters) - 1} other region(s) local-fallback"}
         if refined is not None:
             return {"image": image_path, "source": "sam-3.1",
                     "model": SAM_MODEL, "regions": [],
