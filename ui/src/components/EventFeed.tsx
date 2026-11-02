@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { eventsSocket } from "../api/client";
+import { useEvents } from "../state/events";
 
 interface EventItem {
   raw: string;
@@ -22,53 +22,20 @@ const ROLE_COLORS: Record<string, { bg: string; text: string; border: string }> 
   champion: { bg: "bg-yellow-950/60", text: "text-yellow-300", border: "border-yellow-700/50" },
 };
 
-export function EventFeed({ session = "default", backlog = "instant" }: { session?: string; backlog?: "instant" | "paced" }) {
-  const [events, setEvents] = useState<EventItem[]>([]);
+export function EventFeed({ upto }: { session?: string; backlog?: "instant" | "paced"; upto?: number }) {
+  // Events come from the shared EventsProvider (one socket per session); `upto` limits them for Replay.
+  const { session, events: all } = useEvents();
+  const events: EventItem[] = (upto === undefined ? all : all.slice(0, upto)).slice(-100).map((e) => ({
+    raw: JSON.stringify(e), parsed: e, timestamp: new Date(e._t).toLocaleTimeString(),
+  }));
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // The server ends the stream after ~1 s idle; live rounds pause far longer
-    // between model calls, so reconnect and skip the events already received.
-    let seen = 0;
-    let stopped = false;
-    let ws: WebSocket;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    setEvents([]);
-    const connect = () => {
-      ws = eventsSocket(session, backlog, seen);
-      ws.onmessage = (ev) => {
-        const raw = String(ev.data);
-        let parsed: Record<string, any> | undefined;
-        try {
-          parsed = JSON.parse(raw);
-        } catch {
-          // raw string
-        }
-        if (parsed?.type === "end") return;
-        seen += 1;
-        const item: EventItem = {
-          raw,
-          parsed,
-          timestamp: new Date().toLocaleTimeString(),
-        };
-        setEvents((prev) => [...prev.slice(-99), item]);
-      };
-      ws.onclose = () => {
-        if (!stopped) timer = setTimeout(connect, 2000);
-      };
-    };
-    connect();
-    return () => {
-      stopped = true;
-      clearTimeout(timer);
-      ws.close();
-    };
-  }, [session, backlog]);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [events]);
+    // scroll the feed box only: scrollIntoView would yank the whole page on every live event
+    const box = bottomRef.current?.parentElement;
+    if (box) box.scrollTop = box.scrollHeight;
+  }, [events.length]);
 
   return (
     <div className="glass-panel rounded-xl overflow-hidden border border-white/10">
@@ -80,7 +47,7 @@ export function EventFeed({ session = "default", backlog = "instant" }: { sessio
           </span>
         </div>
         <span className="text-[11px] text-neutral-400 font-mono">
-          {events.length} events logged · ~20/s
+          {all.length} events · showing last {events.length}
         </span>
       </div>
 

@@ -5,6 +5,8 @@ import { GeneralizationMatrix } from "./pages/GeneralizationMatrix";
 import { MissionControl } from "./pages/MissionControl";
 import { PhysicsView } from "./pages/PhysicsView";
 import { Replay } from "./pages/Replay";
+import { Results } from "./pages/Results";
+import { EventsProvider, useEvents } from "./state/events";
 import { Vault } from "./pages/Vault";
 
 const VIEWS = [
@@ -12,6 +14,7 @@ const VIEWS = [
   { id: "Generalization Matrix", icon: "▦", label: "Generalization Matrix" },
   { id: "Candidate Inspector", icon: "∫", label: "Candidate Inspector" },
   { id: "Physics View", icon: "△", label: "Physics View" },
+  { id: "Results", icon: "📊", label: "Results" },
   { id: "Vault", icon: "🔒", label: "Locked Vault" },
   { id: "Replay", icon: "↺", label: "Replay & Scrubber" },
 ] as const;
@@ -23,17 +26,19 @@ export function App() {
   const [session, setSession] = useState("round-1");
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
 
-  // Offer the real sessions under runs/ and start on the newest one.
+  // Offer the real sessions under runs/ (refreshed: a running experiment creates new ones); start on the newest.
   useEffect(() => {
-    fetchSessions()
-      .then((list) => {
-        setSessions(list);
-        if (list.length) setSession(list[0].session);
-      })
+    let first = true;
+    const load = () => fetchSessions()
+      .then((list) => { setSessions(list); if (first && list.length) setSession(list[0].session); first = false; })
       .catch(() => setSessions([]));
+    load();
+    const t = setInterval(load, 10000);
+    return () => clearInterval(t);
   }, []);
 
   return (
+    <EventsProvider session={session}>
     <div className="min-h-screen text-neutral-100 flex flex-col">
       {/* Top Navbar */}
       <header className="glass-panel border-b border-white/10 sticky top-0 z-50 backdrop-blur-md">
@@ -73,10 +78,7 @@ export function App() {
                 ))}
               </datalist>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-xs text-neutral-400 font-mono">Paced ~20/s</span>
-            </div>
+            <StreamStatus />
           </div>
         </div>
       </header>
@@ -110,6 +112,7 @@ export function App() {
           {view === "Generalization Matrix" && <GeneralizationMatrix session={session} />}
           {view === "Candidate Inspector" && <CandidateInspector session={session} />}
           {view === "Physics View" && <PhysicsView session={session} />}
+          {view === "Results" && <Results />}
           {view === "Vault" && <Vault />}
           {view === "Replay" && <Replay session={session} />}
         </main>
@@ -119,6 +122,17 @@ export function App() {
       <footer className="border-t border-white/5 py-4 text-center text-xs text-neutral-500 font-mono">
         FlowForge v2 · Strict Physics Guardrails & Deterministic Verification · RP1–RP6 Benchmark
       </footer>
+    </div>
+    </EventsProvider>
+  );
+}
+
+function StreamStatus() {
+  const { connected, events } = useEvents();
+  return (
+    <div className="flex items-center gap-2" title="websocket to /ws/events for the selected session">
+      <span className={`w-2 h-2 rounded-full ${connected ? "bg-emerald-400 animate-pulse" : "bg-neutral-500"}`} />
+      <span className="text-xs text-neutral-400 font-mono">{connected ? `live · ${events.length} events` : "reconnecting…"}</span>
     </div>
   );
 }

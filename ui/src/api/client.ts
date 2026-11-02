@@ -1,5 +1,6 @@
 // Read-only API client. Zero physics: display data only, never compute closures.
-export interface SessionState { session: string; exists: boolean; event_count: number; event_types: Record<string, number>; pace_seconds: number; events_per_second: number }
+export interface SessionState { session: string; exists: boolean; event_count: number; event_types: Record<string, number>; pace_seconds: number; events_per_second: number;
+  tokens: number; dollars_upper: number; rounds: number[]; last_step: string | null }
 export interface MatrixData { session: string; candidates: string[]; flows: { train: string[]; generated: { flow: string; alpha: number; reynolds: number; split: string }[]; locked: string[] }; locked_greyed: boolean; cells: { candidate: string; flow: string; error: number | null; split: string }[] }
 
 // Default: same origin, forwarded to the API by the Vite dev proxy (vite.config.ts), so the UI
@@ -12,7 +13,8 @@ export async function fetchSessionState(session = "default"): Promise<SessionSta
 }
 export interface LumleyXY { x: number[]; y: number[] }
 export interface PhysicsView { case: string; expression: string; n: number; ratio: number | null;
-  rans: LumleyXY; dns: LumleyXY; corrected: LumleyXY; geometry: { x: number[]; y: number[]; gain: number[] }; error?: string }
+  rans: LumleyXY; dns: LumleyXY; corrected: LumleyXY; geometry: { x: number[]; y: number[]; gain: number[] };
+  b12?: { rans: number[]; dns: number[]; corrected: number[] }; error?: string }
 export async function fetchPhysicsCases(): Promise<Record<string, string[]>> {
   const r = await fetch(`${base}/api/physics_cases`);
   if (!r.ok) throw new Error(`physics cases ${r.status}`);
@@ -53,4 +55,24 @@ export async function fetchLatestRegions(session = "default", useApi = false): P
   const r = await fetch(`${base}/api/latest_regions?session=${encodeURIComponent(session)}&use_api=${useApi ? "true" : "false"}`);
   if (!r.ok) throw new Error(`latest regions ${r.status}`);
   return r.json() as Promise<RegionsData>;
+}
+
+export async function fetchLatex(expr: string): Promise<{ expr: string; latex: string | null; error?: string }> {
+  const r = await fetch(`${base}/api/latex?expr=${encodeURIComponent(expr)}`);
+  if (!r.ok) throw new Error(`latex ${r.status}`);
+  return r.json();
+}
+export interface ArmSeedRow { seed: number; metric: number | null; expression: string | null; session: string; cost_usd: number; dl?: number | null; no_champion?: boolean }
+export interface ArmsFile { file: string; modified: number; mode: string; metric: string; rounds: number; groups: number;
+  spent_usd: number; budget_usd: number; incomplete: boolean; dry_run: boolean;
+  arms: Record<string, { seeds: ArmSeedRow[]; summary: { mean: number; stdev: number; min: number; max: number } | null }>;
+  comparisons?: Record<string, Record<string, number | string | null>> }
+export async function fetchArms(): Promise<ArmsFile[]> {
+  const r = await fetch(`${base}/api/arms`);
+  if (!r.ok) throw new Error(`arms ${r.status}`);
+  return r.json();
+}
+export function artifactUrl(session: string, imagePath: string): string {
+  const name = imagePath.split(/[\\/]/).pop() ?? ""; // event paths use Windows separators
+  return `${base}/api/artifact?session=${encodeURIComponent(session)}&name=${encodeURIComponent(name)}`;
 }

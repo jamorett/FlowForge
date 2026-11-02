@@ -1,159 +1,85 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchSessionState, startRound } from "../api/client";
+import { AgentGraph } from "../components/AgentGraph";
+import { CandidateFunnel, ProgressChart } from "../components/CandidateFunnel";
 import { EventFeed } from "../components/EventFeed";
-import { StatusBadge } from "../components/StatusBadge";
+import { ChampionCard, RedTeamArena, SamPanel } from "../components/LabPanels";
+import { useEvents, useLab } from "../state/events";
 
-const ROLES = [
-  { name: "Board", model: "muse-spark-1.3-contributor", role: "Directs round planning, group staffing & budgets", status: "active" },
-  { name: "Theorist", model: "muse-spark-1.3-contributor", role: "Proposes closure tensor expressions (complexity <= 25)", status: "active" },
-  { name: "Coder", model: "muse-spark-1.3-contributor", role: "Fits constants via elastic net & snaps within 1%", status: "active" },
-  { name: "Analyst", model: "muse-spark-1.3-contributor", role: "Diagnoses regional error maps & recirculation zones", status: "idle" },
-  { name: "Skeptic", model: "muse-spark-1.3-contributor", role: "Attacks correctness & elegance from separate context", status: "idle" },
-  { name: "Red Team", model: "muse-spark-1.3-contributor", role: "Deforms flow geometries to break champions", status: "active" },
-  { name: "Composer", model: "muse-spark-1.3-contributor", role: "Composes surviving modules with sigmoid gates (+16 bits)", status: "idle" },
-];
+function Metric({ label, value, sub, accent = "text-white" }: { label: string; value: string; sub?: string; accent?: string }) {
+  return (
+    <div className="glass-panel p-3 rounded-xl border border-white/10">
+      <div className="text-[11px] text-neutral-400">{label}</div>
+      <div className={`text-lg font-bold font-mono ${accent}`}>{value}</div>
+      {sub && <div className="text-[10px] text-neutral-500">{sub}</div>}
+    </div>
+  );
+}
 
-export function MissionControl({ session: propSession = "default" }: { session?: string }) {
-  const q = useQuery({ queryKey: ["session", propSession], queryFn: () => fetchSessionState(propSession), refetchInterval: 5000 });
-  const [session, setSession] = useState(propSession === "default" ? "round-1" : propSession);
+export function MissionControl({ session = "default" }: { session?: string }) {
+  const st = useQuery({ queryKey: ["session", session], queryFn: () => fetchSessionState(session), refetchInterval: 5000 });
+  const { connected, lastEventAt } = useEvents();
+  const lab = useLab();
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
   const [live, setLive] = useState(false);
-  const [starting, setStarting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
+  const noRedTeam = session.includes("no_redteam");
 
-  async function onStart() {
-    setStarting(true);
-    setNotice(null);
+  async function onStart() { // starts a round in the session being watched (no second session box)
+    setStarting(true); setNotice(null);
     try {
-      const res = await startRound(session || "default", !live);
-      if (res.status === "started") {
-        setNotice(`Round started in session “${res.session}” (${res.mock ? "mock, no spend" : "LIVE, spends API credits"}). Watch the stream below.`);
-      } else if (res.status === "already_running") {
-        setNotice(`Session “${res.session}” already has a running round.`);
-      } else {
-        setNotice(`Start rejected: ${res.reason ?? res.status}.`);
-      }
+      const res = await startRound(session, !live);
+      setNotice(res.status === "started" ? `Round started in “${res.session}” (${res.mock ? "mock, no spend" : "LIVE, spends API credits"}).`
+        : res.status === "already_running" ? `“${res.session}” already has a running round.` : `Start rejected: ${res.reason ?? res.status}.`);
     } catch (e) {
       setNotice(`API offline — start the FastAPI server first. (${e instanceof Error ? e.message : e})`);
-    } finally {
-      setStarting(false);
-    }
+    } finally { setStarting(false); }
   }
 
+  const idle = lastEventAt ? Math.round((now - lastEventAt) / 1000) : null;
+  const survivors = lab.candidates.filter((c) => c.stage >= 5).length;
+  const rejected = lab.candidates.filter((c) => c.status === "rejected").length;
+  const best = lab.best?.worst_validation_ratio;
+
   return (
-    <section aria-label="Mission control" className="space-y-6">
-      {/* Session control */}
-      <div className="glass-panel p-4 rounded-xl border border-white/10 flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2 text-xs">
-          <span className="text-neutral-400">Session:</span>
-          <input
-            type="text"
-            value={session}
-            onChange={(e) => setSession(e.target.value)}
-            className="bg-neutral-900/60 text-cyan-300 font-mono text-xs px-2 py-1.5 rounded-lg border border-white/10 focus:outline-none w-32"
-          />
-        </div>
-        <label className="flex items-center gap-2 text-xs text-neutral-300 cursor-pointer">
+    <section aria-label="Mission control" className="space-y-4">
+      <div className="glass-panel p-3 rounded-xl border border-white/10 flex flex-wrap items-center gap-3 text-xs">
+        <span className="text-neutral-400">Watching <span className="font-mono text-cyan-300">{session}</span></span>
+        <label className="flex items-center gap-2 text-neutral-300 cursor-pointer">
           <input type="checkbox" checked={live} onChange={(e) => setLive(e.target.checked)} className="accent-cyan-500" />
           Live (real API, spends credits)
         </label>
-        <button
-          onClick={onStart}
-          disabled={starting}
-          className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-cyan-600 to-blue-600 text-white border border-cyan-400/40 disabled:opacity-50"
-        >
+        <button onClick={onStart} disabled={starting}
+          className="px-3 py-1.5 rounded-lg font-semibold bg-gradient-to-r from-cyan-600 to-blue-600 text-white border border-cyan-400/40 disabled:opacity-50">
           {starting ? "Starting…" : live ? "Start live round" : "Start mock round"}
         </button>
-        {notice && <p className="text-[11px] text-neutral-400 w-full">{notice}</p>}
+        {notice && <span className="text-neutral-400">{notice}</span>}
       </div>
 
-      {/* Header Metrics Banner */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="glass-panel p-4 rounded-xl border border-white/10">
-          <div className="text-xs text-neutral-400 font-medium">Session Status</div>
-          <div className="mt-1 flex items-center justify-between">
-            <span className="text-lg font-bold text-white">
-              {q.data?.exists ? "Active Stream" : "Standby"}
-            </span>
-            <StatusBadge
-              ok={!!q.data?.exists}
-              label={q.data?.exists ? "Connected" : "No stream"}
-            />
-          </div>
-          <div className="text-[11px] text-neutral-500 mt-2 font-mono">
-            {q.data ? `${q.data.event_count} events · ${q.data.events_per_second}/s` : "Waiting for backend"}
-          </div>
-        </div>
-
-        <div className="glass-panel p-4 rounded-xl border border-white/10">
-          <div className="text-xs text-neutral-400 font-medium">Token Budget Meter</div>
-          <div className="mt-1 flex items-center justify-between">
-            <span className="text-lg font-bold text-cyan-300">$0.00 / $50.00</span>
-            <span className="text-xs px-2 py-0.5 rounded bg-cyan-950/60 text-cyan-400 border border-cyan-800/40">
-              Hard Cap
-            </span>
-          </div>
-          <div className="w-full bg-neutral-800 h-1.5 rounded-full mt-3 overflow-hidden">
-            <div className="bg-cyan-400 h-full w-[2%]" />
-          </div>
-        </div>
-
-        <div className="glass-panel p-4 rounded-xl border border-white/10">
-          <div className="text-xs text-neutral-400 font-medium">Evaluation Ladder Rungs</div>
-          <div className="mt-1 flex items-center gap-1.5">
-            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-blue-950/60 text-blue-300 border border-blue-800/40">R0: Limits</span>
-            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-blue-950/60 text-blue-300 border border-blue-800/40">R1: A Priori</span>
-            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-indigo-950/60 text-indigo-300 border border-indigo-800/40">R2: Short</span>
-            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-purple-950/60 text-purple-300 border border-purple-800/40">R3: Full</span>
-          </div>
-          <div className="text-[11px] text-neutral-500 mt-2">
-            Top 50% advance at each halving rung
-          </div>
-        </div>
-
-        <div className="glass-panel p-4 rounded-xl border border-white/10">
-          <div className="text-xs text-neutral-400 font-medium">Active Research Groups</div>
-          <div className="mt-1 text-lg font-bold text-white">7 Swarm Roles</div>
-          <div className="text-[11px] text-neutral-500 mt-2">
-            Independent roles, structured schema outputs
-          </div>
-        </div>
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+        <Metric label="Stream" value={connected ? "LIVE" : "offline"} accent={connected ? "text-emerald-300" : "text-neutral-500"}
+          sub={idle === null ? "no events yet" : `last event ${idle}s ago`} />
+        <Metric label="Rounds" value={String(lab.rounds.length)} sub={lab.roundNow !== undefined ? `now: round ${lab.roundNow}` : undefined} />
+        <Metric label="Proposals" value={String(lab.candidates.length)} sub={`${rejected} rejected · ${survivors} passed R3`} />
+        <Metric label="Champions" value={String(lab.champions.length)} sub={`${lab.breaks.length} red-team breaks`} />
+        <Metric label="Best ratio vs SST" value={best !== undefined ? best.toFixed(3) : "—"} accent={best !== undefined && best < 1 ? "text-yellow-300" : "text-white"} sub="frozen · lower is better" />
+        <Metric label="API spend (upper bound)" value={st.data ? `$${st.data.dollars_upper.toFixed(2)}` : "—"} sub={st.data ? `${st.data.tokens.toLocaleString()} tokens` : "API offline"} />
       </div>
 
-      {/* Main Grid: Swarm Roles + Event Feed */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Swarm Roles Card */}
-        <div className="lg:col-span-1 glass-panel p-5 rounded-xl border border-white/10 space-y-3">
-          <h3 className="text-sm font-semibold uppercase tracking-wider text-neutral-300 flex items-center justify-between">
-            <span>Swarm Staffing</span>
-            <span className="text-[11px] font-mono text-cyan-400">Meta Model API</span>
-          </h3>
-
-          <div className="space-y-2 text-xs">
-            {ROLES.map((r) => (
-              <div
-                key={r.name}
-                className="p-2.5 rounded-lg bg-neutral-900/50 border border-white/5 hover:border-white/15 transition-all"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-neutral-200">{r.name}</span>
-                  <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-neutral-800 text-neutral-400">
-                    {r.model}
-                  </span>
-                </div>
-                <p className="text-[11px] text-neutral-400 mt-1 leading-snug">
-                  {r.role}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Live Stream Event Feed */}
-        <div className="lg:col-span-2">
-          <EventFeed session={propSession} />
-        </div>
+      <AgentGraph lab={lab} />
+      <div className="grid lg:grid-cols-2 gap-4">
+        <div className="glass-panel rounded-xl border border-white/10 p-2"><CandidateFunnel lab={lab} /></div>
+        <div className="glass-panel rounded-xl border border-white/10 p-2"><ProgressChart lab={lab} /></div>
       </div>
+      <div className="grid lg:grid-cols-2 gap-4">
+        <ChampionCard champ={lab.best} />
+        <RedTeamArena lab={lab} redteamEnabled={!noRedTeam} />
+      </div>
+      <SamPanel lab={lab} session={session} />
+      <EventFeed />
     </section>
   );
 }

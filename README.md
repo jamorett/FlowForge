@@ -118,11 +118,17 @@ Prereqs: Python 3.12, Node 18+, Docker Desktop, a Meta Model API key.
    (identity + injection, ~6 min),
    `python -m pytest tests/integration/test_solver_oracle.py -q`
    (DNS oracle, ~3–7 min).
-6. Serve: `python -m uvicorn flowforge.api.server:app --port 8000`, then
-   `cd ui && npm run dev` (needs `VITE_API=http://localhost:8000`) and open
-   the Vite address (usually `http://localhost:5173`). Start with a mock
-   round from Mission Control to validate the setup before running a live
-   round.
+6. Serve the API: `python -m uvicorn flowforge.api.server:app --host 127.0.0.1 --port 8000`.
+   UI, either way:
+   - **Static (recommended for demos):** `cd ui && VITE_API=http://localhost:8000 npx vite build`,
+     then `python -m http.server 5173 --bind 127.0.0.1 --directory ui/dist`. No Vite dev
+     server runs (its esbuild/vite advisories are fixed only in vite 8).
+   - **Dev:** `cd ui && npm run dev` (the Vite proxy forwards `/api` and `/ws`).
+
+   Open `http://localhost:5173`, pick a session in the top bar. Mission Control shows the
+   live agent graph, candidate funnel, progress vs SST, champion, red-team arena and SAM
+   error regions; Results shows the arms table; Replay re-plays a session at no cost.
+   Start with a mock round to validate the setup before running a live round.
 
 Costs: live rounds and SAM calls consume API credits (approximately $0.60
 observed for the initial live rounds); mock mode and `FLOWFORGE_REPLAY=1`
