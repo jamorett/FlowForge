@@ -33,22 +33,22 @@ REPO = Path(__file__).resolve().parents[2]
 PRESETS = [
     {"id": "smoke", "label": "Smoke test (mock, free)", "kind": "session",
      "description": "1 round, 1 group, mocked agents: checks the pipeline and the UI at no cost.",
-     "params": {"rounds": 1, "groups": 1, "redteam": True, "mock": True, "budget_usd": 0.5}},
+     "params": {"rounds": 1, "groups": 1, "redteam": True, "mock": True, "sam": False, "budget_usd": 0.5}},
     {"id": "live-check", "label": "Quick live check", "kind": "session",
      "description": "1 real round, 1 group: confirms the live model path works (~$0.07).",
-     "params": {"rounds": 1, "groups": 1, "redteam": True, "mock": False, "budget_usd": 0.5}},
+     "params": {"rounds": 1, "groups": 1, "redteam": True, "mock": False, "sam": True, "budget_usd": 0.5}},
     {"id": "session", "label": "Research session (5 × 2)", "kind": "session",
      "description": "5 live rounds × 2 groups with the red team — one full research line (~$0.7).",
-     "params": {"rounds": 5, "groups": 2, "redteam": True, "mock": False, "budget_usd": 2.0}},
+     "params": {"rounds": 5, "groups": 2, "redteam": True, "mock": False, "sam": True, "budget_usd": 2.0}},
     {"id": "ablation", "label": "Ablation session (no red team)", "kind": "session",
      "description": "Same as the research session with the red team off (RP1 contrast).",
-     "params": {"rounds": 5, "groups": 2, "redteam": False, "mock": False, "budget_usd": 2.0}},
+     "params": {"rounds": 5, "groups": 2, "redteam": False, "mock": False, "sam": True, "budget_usd": 2.0}},
     {"id": "experiment-dry", "label": "Experiment dry run (free)", "kind": "experiment",
      "description": "Whole 3-arm × 3-session protocol with mocked agents: bookkeeping only, never a result.",
-     "params": {"rounds": 1, "groups": 1, "seeds": [42, 43, 44], "budget_usd": 1.0, "dry_run": True}},
+     "params": {"rounds": 1, "groups": 1, "seeds": [42, 43, 44], "budget_usd": 1.0, "dry_run": True, "sam": False}},
     {"id": "experiment", "label": "Full experiment (3 arms × 3 sessions)", "kind": "experiment",
      "description": "Swarm vs no-red-team vs sparse baseline, 5 rounds × 2 groups per session — the results table (~$3–4).",
-     "params": {"rounds": 5, "groups": 2, "seeds": [42, 43, 44], "budget_usd": 15.0, "dry_run": False}},
+     "params": {"rounds": 5, "groups": 2, "seeds": [42, 43, 44], "budget_usd": 15.0, "dry_run": False, "sam": True}},
 ]
 
 
@@ -157,8 +157,8 @@ class RunManager:
 
     # ---- session runs --------------------------------------------------------------------
     def start_session(self, session: str, rounds: int, groups: int, redteam: bool, mock: bool,
-                      budget_usd: float, confirm_live: bool = False) -> dict:
-        err = self._validate(rounds, groups, budget_usd, live=not mock, confirm=confirm_live)
+                      budget_usd: float, confirm_live: bool = False, sam: bool = False) -> dict:
+        err = self._validate(rounds, groups, budget_usd, live=(not mock) or sam, confirm=confirm_live)
         if err or not SAFE.match(session):
             return {"status": "rejected", "reason": err or "invalid session id (letters, digits, _ and - only)"}
         with self._lock:
@@ -166,7 +166,8 @@ class RunManager:
                 return {"status": "rejected", "reason": f"a run is already active in session '{session}'"}
             run = Run(id=uuid.uuid4().hex[:8], kind="session", sessions=[session],
                       params={"session": session, "rounds": rounds, "groups": groups, "redteam": redteam,
-                              "mock": mock, "budget_usd": budget_usd, "first_round": _next_round(session)})
+                              "mock": mock, "sam": sam, "budget_usd": budget_usd,
+                              "first_round": _next_round(session)})
             ctl = {"pause": threading.Event(), "stop": threading.Event()}
             self.runs[run.id], self._ctl[run.id] = run, ctl
         threading.Thread(target=self._session_loop, args=(run, ctl), daemon=True, name=f"run-{run.id}").start()
@@ -190,7 +191,8 @@ class RunManager:
                     run.message = f"budget cap ${p['budget_usd']:.2f} reached"
                     return
                 run.status, run.round_now = "running", r
-                result = run_round(r, mock=p["mock"], session=p["session"], groups=p["groups"], redteam=p["redteam"])
+                result = run_round(r, mock=p["mock"], session=p["session"], groups=p["groups"], redteam=p["redteam"],
+                                   sam=p["sam"])
                 run.spent_usd += float(result.get("dollars_spent", 0.0) or 0.0)
                 run.rounds_done += 1
                 if result.get("status") == "error":
@@ -203,8 +205,9 @@ class RunManager:
 
     # ---- experiment ----------------------------------------------------------------------
     def start_experiment(self, rounds: int, groups: int, seeds: list[int], budget_usd: float,
-                         dry_run: bool, archive_existing: bool = False, confirm_live: bool = False) -> dict:
-        err = self._validate(rounds, groups, budget_usd, live=not dry_run, confirm=confirm_live)
+                         dry_run: bool, archive_existing: bool = False, confirm_live: bool = False,
+                         sam: bool = False) -> dict:
+        err = self._validate(rounds, groups, budget_usd, live=(not dry_run) or sam, confirm=confirm_live)
         if not err and (len(seeds) != 3 or len(set(seeds)) != 3):
             err = "the protocol needs exactly 3 distinct session seeds"
         if err:
@@ -232,12 +235,12 @@ class RunManager:
             log = Path("runs") / "arms" / f"{'dryrun' if dry_run else 'arms'}-{stamp}.log"
             cmd = [sys.executable, str(REPO / "scripts" / "run_arms.py"), "--rounds", str(rounds),
                    "--seeds", ",".join(map(str, seeds)), "--groups", str(groups), "--budget-usd", str(budget_usd),
-                   "--out", str(out), "--control-dir", str(ctl_dir)] + (["--dry-run"] if dry_run else [])
+                   "--out", str(out), "--control-dir", str(ctl_dir)] + (["--dry-run"] if dry_run else [])                 + (["--sam"] if sam else [])
             fh = open(log, "w", encoding="utf-8")
             proc = subprocess.Popen(cmd, stdout=fh, stderr=subprocess.STDOUT, cwd=str(Path.cwd()))
             run = Run(id=rid, kind="experiment", sessions=sessions, out_file=str(out), log_file=str(log),
                       params={"rounds": rounds, "groups": groups, "seeds": seeds, "budget_usd": budget_usd,
-                              "dry_run": dry_run, "archived": existing},
+                              "dry_run": dry_run, "sam": sam, "archived": existing},
                       message=f"archived {len(existing)} old session(s)" if existing else "")
             self.runs[rid], self._ctl[rid] = run, {"proc": proc, "dir": ctl_dir, "log": fh}
         return {"status": "started", "run": asdict(run)}

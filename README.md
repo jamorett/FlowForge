@@ -31,7 +31,11 @@ check pass.
   `POST <base>/responses` (`model: sam-3.1`, same Bearer `MODEL_API_KEY`). Concept prompt
   first; on zero matches the local box is re-sent as a box prompt and SAM
   answers with a refined box plus mask under our id. Every result is labeled
-  `sam-3.1`, `local-fallback`, or `none` — never misreported.
+  `sam-3.1`, `local-fallback`, or `none` — never misreported. SAM runs only when
+  a run enables it (UI "SAM 3.1 segmentation" / `run_arms.py --sam`); otherwise the
+  local segmenter is used. The segmented regions (in physical x/h, y/h) are given to
+  the Analyst before it diagnoses. Error maps are true spatial rasters since
+  2026-11-01; earlier maps reshaped the cell list into a square and are not spatial.
 - **API + UI** (`flowforge/api/server.py`, `ui/`): FastAPI backend, React +
   Plotly cockpit. Mission Control starts mock (free) or live rounds;
   Candidate Inspector shows live candidates with a `LIVE`/`OFFLINE SAMPLES`

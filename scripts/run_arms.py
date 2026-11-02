@@ -394,6 +394,7 @@ def baseline_expression(baseline: dict) -> str | None:
 # rounds only: a round is never cut in the middle.
 CONTROL_DIR: Path | None = None
 STOPPED = [False]
+SAM = [False]  # --sam: analyst error maps segmented by SAM 3.1 (same for both swarm arms)
 
 
 def control_should_stop(poll_seconds: float = 2.0) -> bool:
@@ -433,7 +434,7 @@ def collect_swarm_arm(arm: str, seeds: list[int], rounds: int, groups: int,
                 break
             result = round_module.run_round(
                 round_no, mock=False, groups=groups,
-                session=session, redteam=want_redteam)
+                session=session, redteam=want_redteam, sam=SAM[0])
             round_results.append((round_no, result))
             completed += 1
             cost = round_cost(result)
@@ -501,6 +502,8 @@ def main(argv: list[str] | None = None) -> dict | None:
     parser.add_argument("--dry-run", action="store_true", dest="dry_run")
     parser.add_argument("--control-dir", default=None, dest="control_dir",
                         help="directory watched for 'pause'/'stop' files between rounds (UI run panel)")
+    parser.add_argument("--sam", action="store_true",
+                        help="segment analyst error maps with SAM 3.1 (live API calls) in both swarm arms")
     args = parser.parse_args(argv)
     if args.mock:
         for arm in ARMS:
@@ -528,6 +531,7 @@ def main(argv: list[str] | None = None) -> dict | None:
     global CONTROL_DIR
     CONTROL_DIR = Path(args.control_dir) if args.control_dir else None
     STOPPED[0] = False
+    SAM[0] = bool(args.sam)
 
     from flowforge.agents import dispatcher as dispatcher_module
     from flowforge.agents.dispatcher import dispatch_role_mock
@@ -564,6 +568,7 @@ def main(argv: list[str] | None = None) -> dict | None:
             "incomplete": bool(incomplete[0]),
             "dry_run": bool(dry_run),
             "stopped": bool(STOPPED[0]),
+            "sam": bool(SAM[0]),
             "arms": arms_output,
             "comparisons": comparisons,
         }

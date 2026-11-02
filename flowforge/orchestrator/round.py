@@ -94,7 +94,7 @@ def _make_logger(session_dir: Path):
 
 
 def _analyst_regions(expressions: list[str], session_dir: Path,
-                     round_no: int = 1) -> list[dict]:
+                     round_no: int = 1, use_api: bool = False) -> list[dict]:
     """Render error maps + segment regions for finalists.
 
     Returns evidence dicts folded into the analyst step event, so the
@@ -140,14 +140,32 @@ def _analyst_regions(expressions: list[str], session_dir: Path,
                 logger.warning("analyst render (synthetic) failed: %s", exc)
                 continue
         try:
-            seg = segment_error_regions(image, use_api=False)
+            seg = segment_error_regions(image, use_api=use_api)
         except Exception as exc:
             logger.warning("analyst segment failed: %s", exc)
             continue
+        regions = [dict(r) for r in seg["regions"] if isinstance(r, dict)]
+        extent_path = Path(image).with_suffix(".extent.json")
+        if extent_path.exists():  # pixel boxes -> physical x, y ranges (hill heights for the hill case)
+            from flowforge.render.error_map import box_to_physical
+
+            extent = json.loads(extent_path.read_text(encoding="utf-8"))
+            for r in regions:
+                if isinstance(r.get("box"), list) and len(r["box"]) == 4:
+                    r.update(box_to_physical(r["box"], extent))
         out.append({"candidate": expr, "image": image,
                     "illustrative": illustrative,
-                    "source": seg["source"], "regions": seg["regions"]})
+                    "source": seg["source"], "detail": seg.get("detail"), "regions": regions})
     return out
+
+
+def _regions_for_analyst(regions: list[dict]) -> list[dict]:
+    """Compact, physical evidence for the Analyst prompt (no pixels, no image paths)."""
+    keep = ("region", "x_range", "y_range", "mean_error", "max_error", "severity")
+    return [{"candidate": item["candidate"], "segmentation_source": item["source"],
+             "illustrative": item["illustrative"],
+             "regions": [{k: r[k] for k in keep if k in r} for r in item["regions"]]}
+            for item in regions]
 
 
 def _prompt_hash_for(text: str) -> str:
@@ -287,7 +305,7 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
                     event_logger, events_path: Path,
                     groups: int = 1, group_ids: list | None = None,
                     mechanisms: list | None = None,
-                    redteam: bool = True) -> dict:
+                    redteam: bool = True, sam: bool = False) -> dict:
     """Execute a live round with actual LLM calls via the dispatcher.
 
     Each role is dispatched through the prompt loader -> ModelRuntime
@@ -581,9 +599,14 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
         all_broken = True
 
     # --- Step 8: Analyst ---
+    # Segment the finalists' error maps FIRST (SAM 3.1 when sam=True, else local) so the
+    # Analyst diagnoses from measured regions instead of priors; the same object is logged.
+    regions = _analyst_regions([s.get("expression", "") for s in (final or [])],
+                               resolved_dir, round_no, use_api=sam)
     analyst_context = {
         "final_candidates": [s.get("expression") for s in final],
         "error_summary": {s.get("expression"): s.get("score") for s in final},
+        "error_regions": _regions_for_analyst(regions),
     }
     try:
         analyst_result = dispatch_role("analyst", runtime, analyst_context)
@@ -598,9 +621,7 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
         "round": round_no, "mock": False, "synthetic": False,
         "source": "live", "mode": "live", "session": session_name,
         "prompt_hash": _prompt_hash_for(f"flowforge:round:{round_no}:step:analyst"),
-        "regions": _analyst_regions(
-            [s.get("expression", "") for s in (final or [])],
-            resolved_dir, round_no),
+        "regions": regions,
         **analyst_data,
     })
     # --- Step 9: Skeptic ---
@@ -740,7 +761,7 @@ def run_round(round_no: int, mock: bool = False,
               candidates: tuple[str, ...] = MOCK_CANDIDATES,
               session_dir=None, session: str | None = None,
               runs_root=None, groups: int = 1, redteam: bool = True,
-              **kwargs) -> dict:
+              sam: bool = False, **kwargs) -> dict:
     """Run one round. ``groups`` staffs parallel research groups (default 1).
 
     With one group the event chain is exactly the 12 classic steps.
@@ -804,7 +825,7 @@ def run_round(round_no: int, mock: bool = False,
                 round_no, candidates, session_name,
                 resolved_dir, event_logger, events_path,
                 groups=groups, group_ids=group_ids, mechanisms=mechanisms,
-                redteam=redteam,
+                redteam=redteam, sam=sam,
             )
         except Exception as exc:
             logger.error("Live round failed: %s", exc)

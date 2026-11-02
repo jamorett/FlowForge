@@ -1,5 +1,5 @@
 role: analyst
-version: 2
+version: 3
 model: muse-spark-1.3-contributor
 schema: AnalysisReport
 risk_audit: required
@@ -14,7 +14,17 @@ prompt: |
   2. Quantify the error magnitude in each region.
   3. Propose the NEXT hypothesis for the Theorist: what physical
      mechanism should be targeted to reduce the dominant error.
-  4. Use tool calls (render_error_map, sam_segment) when available.
+  4. Ground every failure region in the measured evidence in the
+     error_regions context: for each finalist, regions segmented from its
+     a-priori error map (x_range, y_range in hill heights h, mean_error,
+     max_error) and the segmentation_source ("sam-3.1" or
+     "local-fallback"). Cite the region's coordinates and errors, name the
+     physical zone they correspond to (e.g. y < 0.05 is the near-wall layer,
+     x 0.5-4 just above the hill crest height is the separated shear
+     layer), and say which source produced it.
+  5. If error_regions is empty or marked illustrative, say so explicitly
+     and keep every claim qualitative: never invent coordinates or
+     magnitudes.
 
   Rules:
   - Never score your own analysis or the candidate.

@@ -81,9 +81,11 @@ export function RedTeamArena({ lab, redteamEnabled = true }: { lab: Lab; redteam
 export function SamPanel({ lab, session }: { lab: Lab; session: string }) {
   const rounds = lab.analyst.filter((a) => a.image);
   const [pick, setPick] = useState<number | null>(null);
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null); // hooks before any early return
   const a = rounds.find((x) => x.round === pick) ?? rounds[rounds.length - 1];
   if (!a) return <div className="glass-panel rounded-xl border border-white/10 p-4 text-xs text-neutral-500">No analyst error map yet in this session.</div>;
-  const W = 121; // error maps are rendered at 121×121 px; SAM boxes are in those pixels
+  const spatial = a.regions.some((r: any) => Array.isArray(r.x_range)); // pre-fix maps were not spatial
+  const W = size?.w ?? 121, H = size?.h ?? 121;
   return (
     <div className="glass-panel rounded-xl border border-sky-500/30 p-4 space-y-3">
       <div className="flex items-center justify-between text-xs">
@@ -97,16 +99,20 @@ export function SamPanel({ lab, session }: { lab: Lab; session: string }) {
           </span>
         </span>
       </div>
+      {!spatial && (
+        <p className="text-[11px] text-amber-300">Legacy error map (recorded before 2026-11-01 fix): cells were not spatially arranged, so these regions do not correspond to places in the flow.</p>
+      )}
       <div className="grid md:grid-cols-2 gap-4">
-        <div className="relative w-full max-w-[320px] aspect-square">
-          <img src={artifactUrl(session, a.image!)} alt={`error map round ${a.round}`} className="absolute inset-0 w-full h-full rounded [image-rendering:pixelated]" />
-          <svg viewBox={`0 0 ${W} ${W}`} className="absolute inset-0 w-full h-full">
+        <div className="relative w-full" style={{ aspectRatio: `${W} / ${H}` }}>
+          <img src={artifactUrl(session, a.image!)} alt={`error map round ${a.round}`} onLoad={(e) => setSize({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
+            className="absolute inset-0 w-full h-full rounded [image-rendering:pixelated]" />
+          <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="absolute inset-0 w-full h-full">
             {a.regions.map((r: any, i: number) => {
               const [x0, y0, x1, y1] = r.box ?? [0, 0, 0, 0];
               return (
                 <g key={i}>
-                  <rect x={x0} y={y0} width={Math.max(1, x1 - x0)} height={Math.max(1, y1 - y0)} fill="none" stroke="#22d3ee" strokeWidth={1.2} strokeDasharray="3 2" />
-                  <text x={x0 + 2} y={y0 + 8} fontSize="7" fill="#22d3ee">{r.region}</text>
+                  <rect x={x0} y={y0} width={Math.max(1, x1 - x0)} height={Math.max(1, y1 - y0)} fill="none" stroke="#22d3ee" strokeWidth={W / 150} strokeDasharray={`${W / 60} ${W / 90}`} />
+                  <text x={x0 + 2} y={y0 + W / 30} fontSize={W / 28} fill="#22d3ee">{r.region}</text>
                 </g>
               );
             })}

@@ -202,18 +202,16 @@ def render_error_map(
     pred = candidate_anisotropy(expression, invariants, basis)
     err = np.linalg.norm(pred - target, axis=(-2, -1))
 
-    # Grid reshape or pseudo-2D map
-    import math
+    # True spatial map: rasterize by physical x, y (a reshape of the cell list into a
+    # square scrambled space, so no segmentation could find the bubble). The extent
+    # sidecar maps SAM / local boxes back to physical coordinates.
+    import json as _json
 
-    n = len(err)
-    side = math.isqrt(n)
-    if side * side == n:
-        err_2d = err.reshape(side, side)
-    else:
-        err_2d = err[: side * side].reshape(side, side)
+    from flowforge.render.error_map import rasterize
 
-
+    err_2d, extent = rasterize(data["coordinates"], err)
     out = render_png(err_2d, Path(out_png))
+    out.with_suffix(".extent.json").write_text(_json.dumps({**extent, "case": case_id}), encoding="utf-8")
     return str(out)
 
 
