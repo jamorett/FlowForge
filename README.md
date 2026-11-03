@@ -113,14 +113,15 @@ All numbers are **frozen a-priori** error ratios (lower is better, 1.0 = plain S
 | Random grammar search (no LLM) | 0.784 ± 0.055 | 0.753 / 0.730 / 0.781 / 0.874 / 0.781 | $0 |
 | Loop v2, swarm | 0.850 ± 0.105 | 0.961 / 0.841 / 0.821 / 0.932 / **0.694** | $6.79 (both v2 arms) |
 | Loop v2, no red team | 0.869 ± 0.116 | 0.968 / 0.956 / 0.909 / 0.822 / **0.688** | |
-| Loop v2.1, swarm | _E5 pending_ | | |
-| Loop v2.1, no red team | _E5 pending_ | | |
+| Loop v2.1, swarm | 0.868 ± 0.046 | 0.818 / 0.887 / 0.826 / 0.929 / 0.881 | $6.86 (both v2.1 arms) |
+| Loop v2.1, no red team | 0.871 ± 0.032 | 0.872 / 0.861 / 0.926 / 0.845 / 0.852 | |
 | Loop v1, no red team | 0.883 ± 0.043 | 0.868 / 0.852 / 0.955 / 0.890 / 0.851 | $6.43 (both v1 arms) |
 | Loop v1, swarm | 0.939 ± 0.035 | 0.964 / 0.879 / 0.939 / 0.959 / 0.957 | |
 
-Loop v2 beats loop v1 (swarm: exact one-sided Mann–Whitney p = 0.075) and produced the best single
-closures of the project, but on seed averages neither LLM loop beats sparse regression or random
-search on this metric.
+Loop v2 beats loop v1 (swarm: exact one-sided Mann–Whitney p = 0.075; v2.1 vs v1 p = 0.028) and produced
+the best single closures of the project. v2.1 fixed the wiring (no empty replies, usable candidates in
+later rounds) and cut the seed-to-seed spread from 0.105 to 0.046, but not the mean. On seed averages no
+LLM loop beats sparse regression or random search on this metric.
 
 ### Locked milestone 1 (`square_duct`, one evaluation for a pre-registered set)
 

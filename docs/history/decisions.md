@@ -444,3 +444,11 @@ constant_refit_all 0.957. The validation ranking held on the locked case: loop v
 both, loop v1's worst on both. One locked case, one champion per approach (best validation seed, the
 same rule for every approach), frozen a priori: not a flow-level claim and not a seed-averaged one
 (seed averages on validation: loop v2 0.850–0.869 vs sparse 0.748).
+
+**E5 result (2026-11-03, exploratory, frozen, `data=v3`, loop v2.1, $6.86, `runs/arms/e5-v21-s4*.json`,
+combined table `runs/arms/data-v3-summary.json`), `worst_validation_ratio` on `curved_step`:** swarm
+0.868 ± 0.046, swarm_no_redteam 0.871 ± 0.032; every seed has a champion; 0 empty replies. Vs loop v2 (E4)
+U = 13/25, p = 0.500 (same mean, spread 0.105 → 0.046); vs loop v1 (E3) U = 22/25, p = 0.028; vs
+sparse_baseline U = 0/25 (sparse better on every pair). The v2.1 fixes made later rounds productive
+but did not move the mean on this validation flow. Scripts used for E3–E5 and milestone 1 now live in
+`scripts/` as identical copies (`run_arms_seed.py`, `build_milestone_set.py`, `summarize_data_v3.py`).
