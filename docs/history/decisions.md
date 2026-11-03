@@ -120,3 +120,66 @@ rerun on newer code is a different protocol and is not pooled with this run.
 swarm_no_redteam 0.858 ± 0.011, sparse_baseline 0.823 ± 0.004. RP1 U = 18/25, exact one-sided
 p = 0.155 (not significant; direction favors the red team). RP2 U = 1/25, p = 0.996 (sparse better
 on the registered metric). All 10 swarm seeds produced a champion (no 1.0 imputation).
+
+## 2026-11-02 — Exploratory follow-ups to the decision run (declared before running)
+
+All of these are **exploratory**: none changes the decision-run result above, none touches
+`data/locked/`, and each is reported separately with its own label. No swarm algorithm change
+(feature freeze 2026-11-01); new code is analysis scripts and baselines only.
+
+- **B1 Replication (RP1/RP2, independent):** the decision-run command with seeds 47,48,49,50,51,
+  run in a separate worktree pinned to commit `6f310f4` (= decision-run code), output
+  `runs/arms/replication-2026-11-02.json`. Primary: the replication's own RP1/RP2 exact p-values.
+  Secondary, descriptive only: the 10-seed pooled table (decision + replication).
+- **B2 Single-LLM control:** the same Theorist prompt, model and settings proposes candidates with
+  no Board, Analyst, Skeptic or Composer and no session history; same fitter, ladder,
+  realizability gate, red-team screen and champion selection; 5 seeds × 5 rounds. Asks whether
+  the role structure adds anything beyond one LLM plus the ladder. Compared descriptively.
+- **A2 Sparse + red team:** the sparse baseline's alpha path (one model per alpha) passes the same
+  red-team screen (worse than SST on any redteam/attack case = excluded); the best surviving model
+  by train ratio is that seed's champion. Tests the spec's fallback "the red team may still help
+  classical search".
+- **A3 Random grammar search:** no LLM; random expressions from the same grammar (I1, I2,
+  T1..T3, tanh/div/exp, linear-use rule), the same number of proposals per seed as the swarm
+  (6 per round × 5 rounds), same fitter, ladder and selection. Tests whether the LLM beats
+  undirected search.
+- **A1, A4, A5 (analysis only):** realizability of every champion on every non-train, non-locked
+  case; RP5 ranking of attack cases by how many candidates each breaks; structural diversity per arm.
+- **C A posteriori (full solver):** each of the 15 decision-run champions and SST alone on the
+  periodic hill (data-derived mesh, `correctedKOmegaSST`, correction computed once from the SST
+  solution and held fixed). Metric: normalized RMS error of U vs DNS, as in the oracle gate. No
+  candidate is selected: all 15 are run. Labelled `full`, separately from the `frozen` results.
+
+**Update (same day) — C cancelled:** the solver oracle gate was re-run with Docker up
+(`pytest tests/integration/test_solver_oracle.py tests/integration/test_solver_identity.py`,
+exit 1: identity 2 passed, oracle 1 failed). Injecting the DNS-derived correction through the
+fixed-field path moves U *away* from DNS: error ratio 1.060, 1.072, 1.075 over 3 outer-loop
+passes (gate ≤ 0.70, `configs/tolerances.yaml`). If the exact correction does not improve the
+solved flow, a candidate's a-posteriori run cannot validate or refute it, so C is not run. This
+confirms the pre-committed frozen-only fallback; every result stays labelled `frozen`.
+
+**Results (same day, all `frozen`, exploratory):**
+
+- **B1 Replication** (`runs/arms/replication-2026-11-02.json`, $6.00, complete): swarm
+  0.888 ± 0.064, swarm_no_redteam 0.833 ± 0.071, sparse_baseline 0.828 ± 0.007. RP1 U = 4/25,
+  exact one-sided p = 0.972; RP2 U = 1/25, p = 0.996. Neither hypothesis replicates. Swarm seed 51
+  has no champion and scores 1.0 by the registered rule: in all 5 rounds the red-team screen broke
+  every rung-1 survivor, so nothing reached rung 2. Pooled 10 seeds (descriptive only): swarm
+  0.867 ± 0.050, swarm_no_redteam 0.845 ± 0.050, sparse_baseline 0.826 ± 0.006.
+- **B2 Single LLM** (`runs/arms/control-single_llm-2026-11-02.json`, $1.78): 0.832 ± 0.022; vs
+  swarm p = 0.21, vs swarm_no_redteam p = 0.048, vs sparse p = 0.73 (control better than the
+  swarm arms in direction).
+- **A3 Random grammar** (`runs/arms/control-random_grammar-2026-11-02.json`, $0.87):
+  0.837 ± 0.016; vs swarm p = 0.56, vs swarm_no_redteam p = 0.044, vs sparse p = 0.95. Its
+  champions converge to the same structures the swarm finds.
+- **A2 Sparse + red team** (`runs/arms/analysis-a-2026-11-02.json`): mean ≈ 0.819, the lowest of
+  all arms.
+- **A1/A4/A5:** swarm champions are the most realizable off-train (≥ 99.1 % of convdiv points);
+  the attack hills break 0/71 candidates while convdiv breaks 48/71, and broken candidates score
+  *better* on curved_step (AUC 0.27), so the screen trades validation accuracy for convdiv
+  robustness; the swarm keeps more structural diversity (5 distinct champion structures vs 2 for
+  sparse).
+
+Reading: on this metric the proposer (swarm, single LLM, random grammar) does not change the
+outcome measurably; the fitter and the ladder dominate, and the convdiv red-team screen can
+reject every candidate in a seed.
