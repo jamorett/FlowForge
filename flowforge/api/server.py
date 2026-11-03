@@ -439,6 +439,7 @@ class SessionRunRequest(BaseModel):
     budget_usd: float = 1.0
     confirm_live: bool = False
     sam: bool = False
+    loop: str = "v1"
 
 
 class ExperimentRequest(BaseModel):
@@ -450,6 +451,7 @@ class ExperimentRequest(BaseModel):
     archive_existing: bool = False
     confirm_live: bool = False
     sam: bool = False
+    loop: str = "v1"
 
 
 @app.get("/api/runs")
@@ -467,7 +469,7 @@ def start_session_run(req: SessionRunRequest) -> dict:
     from flowforge.api import run_control as rc
 
     return rc.MANAGER.start_session(req.session, req.rounds, req.groups, req.redteam, req.mock,
-                                    req.budget_usd, req.confirm_live, req.sam)
+                                    req.budget_usd, req.confirm_live, req.sam, req.loop)
 
 
 @app.post("/api/runs/experiment")
@@ -475,7 +477,8 @@ def start_experiment_run(req: ExperimentRequest) -> dict:
     from flowforge.api import run_control as rc
 
     return rc.MANAGER.start_experiment(req.rounds, req.groups, list(req.seeds), req.budget_usd,
-                                       req.dry_run, req.archive_existing, req.confirm_live, req.sam)
+                                       req.dry_run, req.archive_existing, req.confirm_live, req.sam,
+                                       req.loop)
 
 
 @app.post("/api/runs/{run_id}/{action}")

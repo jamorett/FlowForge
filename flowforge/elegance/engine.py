@@ -39,6 +39,22 @@ def description_length(n_nodes: int, constants: list[float], n_gates: int = 0,
     return base + penalty
 
 
+def constant_bits(value: float) -> float:
+    """Bits to state one constant at the precision it carries (heldout DL2).
+
+    A snapped simple value is an index into SNAP_CANDIDATES; anything else is
+    a free fitted number, charged a flat 16 bits.
+    """
+    if any(abs(float(value) - s) <= 1e-9 for s in SNAP_CANDIDATES):
+        return math.log2(len(SNAP_CANDIDATES))
+    return 16.0
+
+
+def description_length_v2(n_nodes: int, constants: list[float]) -> float:
+    """DL2 = nodes * log2(V) + sum of constant_bits (decisions.md 2026-11-03)."""
+    return n_nodes * math.log2(VOCAB_SIZE) + sum(constant_bits(c) for c in constants)
+
+
 def _effective_dl(candidate: dict, gate_dl_penalty_bits: float) -> float:
     """DL used for champion ranking: base ``dl`` plus any gate penalty.
 

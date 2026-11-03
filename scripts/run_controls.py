@@ -12,6 +12,11 @@ screen, champion selection, validation reporting); only the proposer changes:
 - ``swarm_sam_rt110``: the full swarm, with SAM 3.1 error regions for the
   Analyst and the red-team break ratio raised to 1.10; its breaks go to
   ``runs/arms/explore-sam_rt110-attacks`` instead of the permanent library.
+- ``constant``: no LLM at all. The proposer always returns constant-coefficient
+  forms (c_k * T_k, no invariant dependence): the null model of the
+  representation. The red team is stubbed with every available frozen flow (a
+  superset of any LLM pick), so the run costs $0. Declared post hoc: the form was
+  chosen after a scratch probe looked at validation (decisions.md 2026-11-02).
 
 The red-team role stays live in all, as in the swarm arm. Output mirrors
 ``run_arms.py``, with comparisons against the decision-run arms.
@@ -29,7 +34,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from scripts import run_arms  # noqa: E402
 
 STUBBED_ROLES = ("board", "coder", "analyst", "skeptic", "composer")
-CONTROLS = ("single_llm", "random_grammar", "swarm_sam_rt110")
+CONTROLS = ("single_llm", "random_grammar", "swarm_sam_rt110", "constant")
+CONSTANT_EXPRESSIONS = ("0.1 * T1 + 0.1 * T2 + 0.1 * T3", "0.1 * T1 + 0.1 * T2", "0.1 * T2 + 0.1 * T3")
 RT110_BREAK_RATIO = 1.10
 RT110_ATTACKS_DIR = Path("runs") / "arms" / "explore-sam_rt110-attacks"
 
@@ -68,11 +74,20 @@ def random_expression(rng: random.Random) -> str:
         return text
 
 
-def make_dispatch(control: str, original, mock, schemas, seed: int, state: dict):
+def make_dispatch(control: str, original, mock, schemas, seed: int, state: dict,
+                  stub_redteam: bool = False):
     """Wrap ``dispatch_role`` for one control arm and seed."""
     def dispatch(role, runtime, context=None, *args, **kwargs):
         if role in STUBBED_ROLES:
             return mock(role)
+        if role == "redteam" and (control == "constant" or stub_redteam):
+            flows = list((context or {}).get("available_frozen_flows") or []) or [{"kind": "none"}]
+            return schemas["redteam"].model_validate({
+                "risk_audit": "stubbed red team: no LLM, every available frozen flow", "flows": flows})
+        if control == "constant" and role == "theorist":
+            return schemas["theorist"].model_validate({
+                "risk_audit": "constant control: no LLM, constant coefficients only",
+                "expressions": list(CONSTANT_EXPRESSIONS), "mechanisms": ["constant"]})
         if role == "theorist":
             if control == "random_grammar":
                 state["calls"] += 1
@@ -97,8 +112,14 @@ def main(argv: list[str] | None = None) -> dict:
     parser.add_argument("--budget-usd", type=float, default=6.0, dest="budget_usd")
     parser.add_argument("--reference", default="runs/arms/decision-2026-11-02.json")
     parser.add_argument("--out", required=True)
+    parser.add_argument("--selection", choices=("train", "heldout"), default="train")
+    parser.add_argument("--stub-redteam", action="store_true", dest="stub_redteam",
+                        help="red team = every available frozen flow, no LLM ($0)")
     args = parser.parse_args(argv)
     seeds = run_arms.parse_seed_list(args.seeds)
+    run_arms.SELECTION[0] = args.selection
+    # own session folders per rule, so one run never reads the other's history
+    label = args.control if args.selection == "train" else f"{args.control}_heldout"
 
     from flowforge.agents import dispatcher as dispatcher_module
     from flowforge.agents.dispatcher import ROLE_SCHEMAS, dispatch_role_mock
@@ -114,13 +135,16 @@ def main(argv: list[str] | None = None) -> dict:
             run_arms.SAM[0] = True
             round_module.REDTEAM_BREAK_RATIO = RT110_BREAK_RATIO
             round_module.ATTACKS_DIR = RT110_ATTACKS_DIR
+        else:
+            round_module.ATTACKS_DIR = Path("runs") / "arms" / f"explore-{label}-attacks"
         for seed in seeds:
             if args.control != "swarm_sam_rt110":
                 state = {"calls": 0}
                 dispatcher_module.dispatch_role = make_dispatch(
-                    args.control, original, dispatch_role_mock, ROLE_SCHEMAS, seed, state)
+                    args.control, original, dispatch_role_mock, ROLE_SCHEMAS, seed, state,
+                    stub_redteam=args.stub_redteam)
             arm = run_arms.collect_swarm_arm(
-                args.control, [seed], args.rounds, args.groups,
+                label, [seed], args.rounds, args.groups,
                 args.budget_usd, False, spent, incomplete)
             rows.extend(arm["seeds"])
     finally:
@@ -130,18 +154,24 @@ def main(argv: list[str] | None = None) -> dict:
 
     metrics = [row["metric"] for row in rows if row["metric"] is not None]
     arms_output = {args.control: {"seeds": rows, "summary": run_arms.summarize_or_none(metrics, len(rows))}}
-    reference = json.loads(Path(args.reference).read_text(encoding="utf-8"))
-    for name, info in reference["arms"].items():
-        arms_output[name] = info
-    comparisons = {
-        f"{args.control}_vs_{other}": run_arms.build_comparison(args.control, other, arms_output)
-        for other in ("swarm", "swarm_no_redteam", "sparse_baseline")
-    }
+    ref_path = Path(args.reference)
+    comparisons: dict = {}
+    if ref_path.exists():
+        reference = json.loads(ref_path.read_text(encoding="utf-8"))
+        for name, info in reference["arms"].items():
+            arms_output[name] = info
+        comparisons = {
+            f"{args.control}_vs_{other}": run_arms.build_comparison(args.control, other, arms_output)
+            for other in ("swarm", "swarm_no_redteam", "sparse_baseline")
+        }
+    else:
+        print(f"reference {ref_path} not found: comparisons skipped")
     output = {
         "label": "exploratory", "mode": "frozen", "control": args.control,
+        "selection": args.selection, "stub_redteam": bool(args.stub_redteam),
         "rounds": args.rounds, "groups": args.groups, "seeds": seeds,
         "spent_usd": spent[0], "incomplete": incomplete[0],
-        "reference": args.reference, "arms": {args.control: arms_output[args.control]},
+        "reference": args.reference if ref_path.exists() else None, "arms": {args.control: arms_output[args.control]},
         "comparisons": comparisons,
     }
     out = Path(args.out)

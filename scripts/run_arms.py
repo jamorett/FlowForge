@@ -351,6 +351,9 @@ def select_seed_champion(
     """
     if not round_results:
         return (None, None, None, False)
+    if LOOP[0] == "v2":  # the population is cumulative: the last champion is the session's best
+        usable = [(n, r) for n, r in round_results if round_metric(r) is not None]
+        round_results = usable[-1:] or round_results
     _, last_result = round_results[-1]
     fallback = round_metric(last_result) is None
     ranked: list[tuple[int, float, float, float, int, str | None]] = []
@@ -359,6 +362,8 @@ def select_seed_champion(
         if metric is None:
             continue
         train = round_train_score(result)
+        if SELECTION[0] == "heldout":  # seed champion = lowest held-out selection score
+            train = parse_train_number((result.get("champion") or {}).get("selection_ratio"))
         ranked.append((0 if train is not None else 1,
                        train if train is not None else metric,
                        metric, int(round_no), round_expression(result)))
@@ -395,6 +400,8 @@ def baseline_expression(baseline: dict) -> str | None:
 CONTROL_DIR: Path | None = None
 STOPPED = [False]
 SAM = [False]  # --sam: analyst error maps segmented by SAM 3.1 (same for both swarm arms)
+SELECTION = ["train"]  # --selection: "heldout" = decisions.md 2026-11-03 rule
+LOOP = ["v1"]  # --loop: "v2" = flowforge.orchestrator.loop_v2 (population carries across rounds)
 
 
 def control_should_stop(poll_seconds: float = 2.0) -> bool:
@@ -415,13 +422,17 @@ def collect_swarm_arm(arm: str, seeds: list[int], rounds: int, groups: int,
                       budget_usd: float, dry_run: bool,
                       spent: list[float], incomplete: list[bool]) -> dict:
     """Run one swarm arm across seeds, tracking shared spend/budget."""
-    from flowforge.orchestrator import round as round_module
+    if LOOP[0] == "v2":
+        from flowforge.orchestrator import loop_v2 as round_module
+    else:
+        from flowforge.orchestrator import round as round_module
 
     want_redteam = arm != "swarm_no_redteam"
     rows: list[dict] = []
     for seed in seeds:
         # dry runs mock the agents: keep them out of the real sessions' history
-        session = f"{'dryrun-' if dry_run else ''}arms-{arm}-s{seed}"
+        loop_tag = "-v2" if LOOP[0] == "v2" else ""
+        session = f"{'dryrun-' if dry_run else ''}arms-{arm}{loop_tag}-s{seed}"
         seed_cost = 0.0
         round_results: list[tuple[int, dict]] = []
         completed = 0
@@ -434,7 +445,8 @@ def collect_swarm_arm(arm: str, seeds: list[int], rounds: int, groups: int,
                 break
             result = round_module.run_round(
                 round_no, mock=False, groups=groups,
-                session=session, redteam=want_redteam, sam=SAM[0])
+                session=session, redteam=want_redteam, sam=SAM[0],
+                **({"selection": SELECTION[0]} if SELECTION[0] != "train" else {}))
             round_results.append((round_no, result))
             completed += 1
             cost = round_cost(result)
@@ -502,6 +514,8 @@ def main(argv: list[str] | None = None) -> dict | None:
     parser.add_argument("--dry-run", action="store_true", dest="dry_run")
     parser.add_argument("--control-dir", default=None, dest="control_dir",
                         help="directory watched for 'pause'/'stop' files between rounds (UI run panel)")
+    parser.add_argument("--selection", choices=("train", "heldout"), default="train")
+    parser.add_argument("--loop", choices=("v1", "v2"), default="v1")
     parser.add_argument("--sam", action="store_true",
                         help="segment analyst error maps with SAM 3.1 (live API calls) in both swarm arms")
     args = parser.parse_args(argv)
@@ -532,6 +546,8 @@ def main(argv: list[str] | None = None) -> dict | None:
     CONTROL_DIR = Path(args.control_dir) if args.control_dir else None
     STOPPED[0] = False
     SAM[0] = bool(args.sam)
+    SELECTION[0] = args.selection
+    LOOP[0] = args.loop
 
     from flowforge.agents import dispatcher as dispatcher_module
     from flowforge.agents.dispatcher import dispatch_role_mock
@@ -574,6 +590,8 @@ def main(argv: list[str] | None = None) -> dict | None:
             "dry_run": bool(dry_run),
             "stopped": bool(STOPPED[0]),
             "sam": bool(SAM[0]),
+            "selection": SELECTION[0],
+            "loop": LOOP[0],
             "arms": arms_output,
             "comparisons": comparisons,
         }

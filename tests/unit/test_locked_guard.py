@@ -90,3 +90,53 @@ def test_evaluate_locked_records_scores(tmp_path: Path) -> None:
     assert "does not read data/locked" in result.stdout
     log = (tmp_path / "runs" / "vault_access.log").read_text(encoding="utf-8")
     assert "LOCKED_EVAL" in log and "milestone=1" in log and "probe" in log
+
+
+def _fake_locked_root(tmp_path: Path) -> Path:
+    """Synthetic square_duct store (not real locked data) with one NaN target row."""
+    import numpy as np
+
+    from flowforge.data.zarr_store import write_case
+    from flowforge.physics.tensors import invariants, normalized_tensors, tensor_basis
+
+    rng = np.random.default_rng(0)
+    n = 16
+    s, w = normalized_tensors(0.1 * rng.standard_normal((n, 3, 3)), np.full(n, 2.0))
+    basis = tensor_basis(s, w)
+    t1 = basis["T1"]
+    target = 0.5 * (t1 - np.trace(t1, axis1=1, axis2=2)[:, None, None] / 3 * np.eye(3))  # trace-free
+    target[3] = np.nan
+    arrays = {f"invariants/{k}": v for k, v in invariants(s, w).items()}
+    arrays.update({f"tensor_basis/{k}": v for k, v in basis.items()})
+    arrays["targets/a_delta"] = target
+    arrays["targets/Pk_delta"] = np.zeros(n)
+    root = tmp_path / "fake_locked"
+    write_case(root / "square_duct", arrays)
+    return root
+
+
+def test_candidates_file_is_one_eval_and_masks_nan(tmp_path: Path) -> None:
+    root = _fake_locked_root(tmp_path)
+    cands = tmp_path / "m1.json"
+    cands.write_text(json.dumps({"exact": "0.5 * T1", "zero": "0 * T1"}), encoding="utf-8")
+    log = tmp_path / "vault.log"
+    result = _run_eval(tmp_path, "--milestone", "1", "--candidates-file", str(cands),
+                       "--locked-root", str(root), "--log-file", str(log), "--reason", "probe")
+    assert result.returncode == 0, result.stderr
+    lines = [l for l in log.read_text(encoding="utf-8").splitlines() if l.startswith("LOCKED_EVAL")]
+    assert len(lines) == 1 and "mode=direct-set" in lines[0]
+    scores = json.loads(lines[0].split("scores=", 1)[1])["candidates"]
+    duct = scores["exact"]["cases"]["square_duct"]
+    assert duct["n_excluded"] == 1 and duct["error_ratio"] < 1e-12  # NaN row excluded, not NaN
+    assert abs(scores["zero"]["cases"]["square_duct"]["error_ratio"] - 1.0) < 1e-12
+
+
+def test_invalid_candidate_uses_no_evaluation(tmp_path: Path) -> None:
+    cands = tmp_path / "bad.json"
+    cands.write_text(json.dumps({"bad": "C1 * T1"}), encoding="utf-8")
+    log = tmp_path / "vault.log"
+    for argv in (("--candidates-file", str(cands)), ("--champion", "I3 * T1")):
+        result = _run_eval(tmp_path, "--milestone", "1", *argv,
+                           "--locked-root", str(tmp_path / "none"), "--log-file", str(log))
+        assert result.returncode == 2
+    assert not log.exists()

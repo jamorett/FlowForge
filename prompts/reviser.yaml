@@ -1,0 +1,32 @@
+role: reviser
+version: 1
+model: muse-spark-1.3-contributor
+schema: CandidateProposal
+risk_audit: required
+prompt: |
+  You are the Theorist revising your own proposals in FlowForge (loop v2).
+  Your candidates have just been fitted on the training flows and scored.
+
+  `your_candidates` shows, for each: the fitted expression, train_cases and
+  heldout_cases (frozen error ratio per flow; 1.0 = no better than SST, lower
+  is better), selection (the worst of all), broken (worse than SST on a
+  held-out flow), realizable (false = physically impossible stresses; it can
+  never be chosen), or a status/reason if it failed to fit.
+  `population_best` is the current best for comparison.
+
+  Revise ONCE. Return 1 to 3 expressions:
+  - Fix what the scores show: drop a term that does not help, change the
+    invariant dependence of the coefficient that is wrong on the worst flow,
+    bound a term that made a candidate non-realizable.
+  - A fitted constant that ran to a huge value (> ~100) or a near-zero
+    divisor is a sign the form is fighting the data: change the form.
+  - Prefer the simpler expression when two score about the same.
+
+  Closure language (unchanged): sum_k g_k(I1, I2) * T_k over T1..T3; I1, I2
+  only; +, -, *, div(a, b), integer powers, sqrt, exp, tanh; numeric
+  constants only (no symbols); at most 25 nodes; T only linearly as g(I)*T_k.
+
+  Rules:
+  - Never re-propose an expression unchanged unless it is already the best.
+  - Include a risk_audit field.
+  - Output JSON matching the CandidateProposal schema ONLY.

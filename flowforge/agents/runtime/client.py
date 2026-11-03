@@ -74,13 +74,15 @@ class ModelRuntime:
         if self.spent + est_dollars > SESSION_LIMIT:
             raise BudgetExceededError(f"Session limit ${SESSION_LIMIT} would be exceeded")
 
-    def _log_event(self, prompt: str, model: str, tokens: int, text: str, schema: str | None = None) -> None:
+    def _log_event(self, prompt: str, model: str, tokens: int, text: str, schema: str | None = None,
+                   dollars: float = 0.0) -> None:
         if self.logger is None:
             return
         from flowforge.agents.runtime.event_logger import prompt_hash
 
+        # `dollars` lets a later round rebuild session spend (event_logger.session_spent).
         event: dict = {"prompt_hash": prompt_hash(prompt), "model": model,
-                       "tokens": tokens, "response": {"text": text}}
+                       "tokens": tokens, "dollars": dollars, "response": {"text": text}}
         if schema is not None:
             event["schema"] = schema
         key = os.environ.get("MODEL_API_KEY") or ""
@@ -137,9 +139,10 @@ class ModelRuntime:
             # No split reported: bill everything at the output rate.
             prompt_tokens, completion_tokens = 0, usage
         self.tokens += usage
-        self.spent += cost_for(model, completion_tokens, prompt_tokens)
+        call_cost = cost_for(model, completion_tokens, prompt_tokens)
+        self.spent += call_cost
         text = resp.choices[0].message.content or ""
-        self._log_event(prompt, model, usage, text)
+        self._log_event(prompt, model, usage, text, dollars=call_cost)
         if self.spent > SESSION_LIMIT:
             raise BudgetExceededError(f"Session limit ${SESSION_LIMIT} exceeded (${self.spent:.2f} spent)")
         return text

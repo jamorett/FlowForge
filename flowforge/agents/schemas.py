@@ -86,4 +86,8 @@ ROLE_SCHEMAS: dict[str, type[BaseModel]] = {
     "skeptic": SkepticCritique,
     "redteam": AttackSpec,
     "composer": CompositionPlan,
+    # loop v2 (flowforge/orchestrator/loop_v2.py): existing schemas, new prompts
+    "diagnostician": AnalysisReport,
+    "theorist_v2": CandidateProposal,
+    "reviser": CandidateProposal,
 }

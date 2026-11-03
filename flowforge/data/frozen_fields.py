@@ -270,6 +270,21 @@ def redteam_case_ids(root=None) -> list[str]:
     return [entry["id"] for entry in data["cases"] if entry["split"] == "redteam"]
 
 
+def selection_case_ids() -> list[str]:
+    """Held-out selection flows: every available attack hill plus the redteam split.
+
+    Never train, validation or locked (decisions.md 2026-11-03).
+    """
+    from flowforge.config import EXPECTED_LOCKED_CASES
+
+    excluded = set(train_case_ids()) | set(validation_case_ids()) | set(EXPECTED_LOCKED_CASES)
+    out: list[str] = []
+    for cid in [f.get("case_id") for f in available_attack_flows()] + list(redteam_case_ids()):
+        if isinstance(cid, str) and cid not in excluded and cid not in out:
+            out.append(cid)
+    return out
+
+
 def score_expression(
     expression: str,
     invariants: dict[str, np.ndarray],

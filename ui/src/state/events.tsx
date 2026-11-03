@@ -6,7 +6,11 @@ export type Ev = Record<string, any> & { _i: number; _t: number };
 // Ladder order of the round; every view (graph, funnel, replay) reads this one list.
 export const FLOW = ["board", "theorist", "coder", "fit", "rung0", "rung1", "rung2", "rung3",
   "analyst", "skeptic", "redteam", "composer", "champion"] as const;
-export type Role = (typeof FLOW)[number];
+// Loop v2 (flowforge/orchestrator/loop_v2.py): diagnose -> propose -> score -> revise -> population -> champion.
+export const FLOW_V2 = ["diagnostician", "theorist", "score", "revise", "score_revised", "population", "champion"] as const;
+export type Role = (typeof FLOW)[number] | (typeof FLOW_V2)[number];
+export type Loop = "v1" | "v2";
+export const flowOf = (loop: Loop): readonly Role[] => (loop === "v2" ? FLOW_V2 : FLOW);
 export const STAGES = ["proposed", "fitted", "R0 limits", "R1 a priori", "R2 short", "R3 realizable", "champion"];
 
 export interface Cand {
@@ -24,6 +28,7 @@ export interface Lab {
   analyst: { round: number; image?: string; regions: any[]; source?: string; failure_regions: string[]; next_hypothesis?: string }[];
   objections: { round: number; text: string }[];
   tokens: number; lastRole?: Role; lastAt?: number; roundNow?: number;
+  loop: Loop; population: { round: number; size: number }[];
 }
 
 const names = (xs: unknown): string[] =>
@@ -31,19 +36,23 @@ const names = (xs: unknown): string[] =>
 
 /** Pure: raw events -> lab model. Rejections are inferred like history.py: present at rung k, absent at k+1. */
 export function deriveLab(events: Ev[]): Lab {
-  const lab: Lab = { events, rounds: [], candidates: [], champions: [], attacks: [], breaks: [], analyst: [], objections: [], tokens: 0 };
+  const loop: Loop = events.some((e) => e.loop === "v2") ? "v2" : "v1";
+  const flow = flowOf(loop) as readonly string[];
+  const lab: Lab = { events, rounds: [], candidates: [], champions: [], attacks: [], breaks: [], analyst: [], objections: [],
+    tokens: 0, loop, population: [] };
   const byRound = new Map<number, Ev[]>();
   for (const e of events) {
     if (typeof e.tokens === "number" && !e.step) lab.tokens += e.tokens;
     if (typeof e.round !== "number") continue;
     if (!byRound.has(e.round)) byRound.set(e.round, []);
     byRound.get(e.round)!.push(e);
-    if (e.step && (FLOW as readonly string[]).includes(e.step)) { lab.lastRole = e.step as Role; lab.lastAt = e._t; lab.roundNow = e.round; }
+    if (e.step && flow.includes(e.step)) { lab.lastRole = e.step as Role; lab.lastAt = e._t; lab.roundNow = e.round; }
   }
   lab.rounds = [...byRound.keys()].sort((a, b) => a - b);
   for (const r of lab.rounds) {
     const evs = byRound.get(r)!;
     const step = (s: string) => evs.filter((e) => e.step === s);
+    if (loop === "v2") { deriveRoundV2(lab, r, step); continue; }
     const fitOf = new Map<string, any>();
     for (const f of step("fit")) for (const x of f.fits ?? []) if (x?.original) fitOf.set(x.original, x);
     const pass = [0, 1, 2, 3].map((k) => step(`rung${k}`).length ? new Set(step(`rung${k}`).flatMap((e) => names(e.survivors))) : null);
@@ -85,6 +94,30 @@ export function deriveLab(events: Ev[]): Lab {
   const scored = lab.champions.filter((c) => typeof c.worst_validation_ratio === "number");
   lab.best = scored.sort((a, b) => a.worst_validation_ratio! - b.worst_validation_ratio!)[0];
   return lab;
+}
+
+/** Loop v2 round: candidates from the score nodes, diagnosis into the analyst slot, population size. */
+function deriveRoundV2(lab: Lab, r: number, step: (s: string) => Ev[]) {
+  const champ = step("champion").map((e) => e.champion).find((c) => c && c.expression);
+  const done = step("population").length > 0;
+  for (const e of [...step("score"), ...step("score_revised")]) {
+    for (const c of e.candidates ?? []) {
+      const ok = c.status === "ok";
+      const isChamp = !!champ && champ.expression === c.expression;
+      const reason = !ok ? `fit ${c.status}${c.reason && c.reason !== c.status ? `: ${c.reason}` : ""}`
+        : !c.realizable ? "non-realizable (left the Lumley triangle)"
+        : c.broken ? "broken: worse than SST on a held-out flow"
+        : done && !isChamp ? "kept in or dropped from the population; not champion" : undefined;
+      lab.candidates.push({ expr: c.expression, original: c.original ?? c.expression, round: r, group: e.group,
+        stage: isChamp ? 6 : !ok ? 0 : c.realizable ? 5 : 1, status: isChamp ? "champion" : reason ? "rejected" : "alive",
+        reason, mse: c.selection ?? undefined });
+    }
+  }
+  if (champ) lab.champions.push({ round: r, ...champ });
+  for (const e of step("diagnostician")) {
+    lab.analyst.push({ round: r, regions: [], failure_regions: (e.failure_regions ?? []).map(String), next_hypothesis: e.next_hypothesis });
+  }
+  for (const e of step("population")) lab.population.push({ round: r, size: (e.population ?? []).length });
 }
 
 interface Store { session: string; events: Ev[]; connected: boolean; lastEventAt: number | null }

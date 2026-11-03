@@ -29,6 +29,22 @@ CASE_MAPPING = {
     "curved_step": ("cbfs13700", "data/processed/curved_step", "validation"),
     "converging_diverging_channel": ("convdiv12600", "data/processed/converging_diverging_channel", "redteam"),
     "square_duct": ("squareDuctAve_Re_2205", "data/locked/square_duct", "locked"),
+    # data v3 (decisions.md 2026-11-03): bumps + flat plates; other square-duct Re stay out.
+    "bump_h20": ("h20", "data/processed/bump_h20", "train"),
+    "bump_h31": ("h31", "data/processed/bump_h31", "train"),
+    "bump_h42": ("h42", "data/processed/bump_h42", "train"),
+    "flat_plate_re1000": ("fp_1000", "data/processed/flat_plate_re1000", "train"),
+    "flat_plate_re1410": ("fp_1410", "data/processed/flat_plate_re1410", "train"),
+    "flat_plate_re2000": ("fp_2000", "data/processed/flat_plate_re2000", "train"),
+    "flat_plate_re2540": ("fp_2540", "data/processed/flat_plate_re2540", "train"),
+    "flat_plate_re3030": ("fp_3030", "data/processed/flat_plate_re3030", "train"),
+    "flat_plate_re3270": ("fp_3270", "data/processed/flat_plate_re3270", "train"),
+    "flat_plate_re3630": ("fp_3630", "data/processed/flat_plate_re3630", "train"),
+    "flat_plate_re3970": ("fp_3970", "data/processed/flat_plate_re3970", "train"),
+    "flat_plate_re4060": ("fp_4060", "data/processed/flat_plate_re4060", "train"),
+    "bump_h26": ("h26", "data/processed/bump_h26", "redteam"),
+    "bump_h38": ("h38", "data/processed/bump_h38", "redteam"),
+    "converging_diverging_channel_re20580": ("convdiv20580", "data/processed/converging_diverging_channel_re20580", "redteam"),
 }
 
 ATTACK_CASE_MAPPING = {

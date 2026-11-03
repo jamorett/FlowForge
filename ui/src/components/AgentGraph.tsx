@@ -1,13 +1,19 @@
 import { useEffect, useState } from "react";
-import { FLOW, prefersReducedMotion, type Lab, type Role } from "../state/events";
+import { flowOf, prefersReducedMotion, type Lab, type Role } from "../state/events";
 
 // Round order as a closed circuit: top row, the ladder down the right, review row back, loop to Board.
-const POS: Record<Role, [number, number]> = {
+const POS_V1: Partial<Record<Role, [number, number]>> = {
   board: [70, 70], theorist: [220, 70], coder: [370, 70], fit: [520, 70], rung0: [670, 70], rung1: [820, 70],
   rung2: [940, 190], rung3: [820, 310], analyst: [670, 310], skeptic: [520, 310], redteam: [370, 310],
   composer: [220, 310], champion: [70, 310],
 };
-const LABEL: Record<Role, string> = {
+// Loop v2 circuit: diagnose -> propose -> score -> revise -> re-score -> population -> champion -> next round.
+const POS_V2: Partial<Record<Role, [number, number]>> = {
+  diagnostician: [110, 110], theorist: [330, 70], score: [580, 70], revise: [870, 110],
+  score_revised: [870, 280], population: [580, 310], champion: [330, 310],
+};
+const LABEL: Partial<Record<Role, string>> = {
+  diagnostician: "Diagnostician", score: "Fit + score", revise: "Reviser", score_revised: "Re-score", population: "Population",
   board: "Board", theorist: "Theorists", coder: "Coder", fit: "Fitter", rung0: "R0 limits", rung1: "R1 a priori",
   rung2: "R2 short", rung3: "R3 realizable", analyst: "Analyst + SAM", skeptic: "Skeptic", redteam: "Red Team",
   composer: "Composer", champion: "Champion",
@@ -15,6 +21,7 @@ const LABEL: Record<Role, string> = {
 const COLOR: Partial<Record<Role, string>> = {
   board: "#a78bfa", theorist: "#22d3ee", coder: "#34d399", fit: "#34d399", analyst: "#38bdf8",
   skeptic: "#fbbf24", redteam: "#fb7185", composer: "#e879f9", champion: "#facc15",
+  diagnostician: "#a78bfa", revise: "#22d3ee", score: "#34d399", score_revised: "#34d399", population: "#38bdf8",
 };
 const color = (r: Role) => COLOR[r] ?? "#60a5fa";
 
@@ -27,6 +34,7 @@ function useNow(ms = 1000) {
 /** What each node did in the current round, from the derived lab model only. */
 function badges(lab: Lab, round?: number): Partial<Record<Role, string>> {
   if (round === undefined) return {};
+  if (lab.loop === "v2") return badgesV2(lab, round);
   const c = lab.candidates.filter((x) => x.round === round);
   const atLeast = (s: number) => c.filter((x) => x.stage >= s).length;
   const champ = lab.champions.find((x) => x.round === round);
@@ -42,7 +50,26 @@ function badges(lab: Lab, round?: number): Partial<Record<Role, string>> {
   };
 }
 
+function badgesV2(lab: Lab, round: number): Partial<Record<Role, string>> {
+  const evs = lab.events.filter((e) => e.round === round);
+  const count = (step: string, key: string) => evs.filter((e) => e.step === step).reduce((n, e) => n + (e[key]?.length ?? 0), 0);
+  const scored = (step: string) => evs.filter((e) => e.step === step).flatMap((e) => e.candidates ?? []);
+  const usable = (xs: any[]) => xs.filter((c) => c.status === "ok" && c.realizable).length;
+  const champ = lab.champions.find((x) => x.round === round);
+  const pop = lab.population.find((p) => p.round === round);
+  const diag = lab.analyst.find((a) => a.round === round);
+  return {
+    diagnostician: diag ? (diag.failure_regions[0] ?? "diagnosed") : "",
+    theorist: `${count("theorist", "expressions")} proposed`, score: `${usable(scored("score"))} usable`,
+    revise: `${count("revise", "expressions")} revised`, score_revised: `${usable(scored("score_revised"))} usable`,
+    population: pop ? `${pop.size} kept` : "",
+    champion: champ?.worst_validation_ratio !== undefined ? `ratio ${champ.worst_validation_ratio.toFixed(3)}` : "",
+  };
+}
+
 export function AgentGraph({ lab, live = true }: { lab: Lab; live?: boolean }) {
+  const FLOW = flowOf(lab.loop);
+  const POS = (lab.loop === "v2" ? POS_V2 : POS_V1) as Record<Role, [number, number]>;
   const now = useNow();
   const motion = !prefersReducedMotion();
   const last = lab.lastRole;
@@ -61,7 +88,8 @@ export function AgentGraph({ lab, live = true }: { lab: Lab; live?: boolean }) {
         <span className="font-semibold uppercase tracking-wider text-neutral-300">Agent interaction graph</span>
         <span className="font-mono text-neutral-400">
           {lab.roundNow !== undefined ? `round ${lab.roundNow}` : "waiting for events"}
-          {live && next && idleS !== null ? ` · ${LABEL[next]} working… ${idleS}s` : ""}
+          {live && next && idleS !== null ? ` · ${LABEL[next] ?? next} working… ${idleS}s` : ""}
+          {lab.loop === "v2" ? " · loop v2" : ""}
         </span>
       </div>
       <svg viewBox="0 0 1010 380" className="w-full h-auto" role="img" aria-label="Agents and the evaluation ladder; the active agent pulses">
@@ -95,7 +123,7 @@ export function AgentGraph({ lab, live = true }: { lab: Lab; live?: boolean }) {
               )}
               <circle cx={x} cy={y} r={32} fill={isLast ? color(r) : "#0f172a"} fillOpacity={isLast ? 0.25 : 1}
                 stroke={color(r)} strokeWidth={isLast ? 3 : 1.5} filter={isLast ? "url(#glow)" : undefined} />
-              <text x={x} y={y + 4} textAnchor="middle" fontSize="11" fontWeight="600" fill="#e2e8f0">{LABEL[r]}</text>
+              <text x={x} y={y + 4} textAnchor="middle" fontSize="11" fontWeight="600" fill="#e2e8f0">{LABEL[r] ?? r}</text>
               {b[r] && <text x={x} y={y + 50} textAnchor="middle" fontSize="11" fill={color(r)} fontFamily="monospace">{b[r]}</text>}
             </g>
           );

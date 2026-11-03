@@ -138,3 +138,33 @@ def test_prompt_files_match_schemas() -> None:
         assert data["schema"] == schema.__name__
         assert data["risk_audit"] == "required"
         assert "risk_audit" in data["prompt"]
+
+
+def test_session_spend_carries_across_rounds(tmp_path, monkeypatch) -> None:
+    """A live call logs its dollars; a fresh runtime (next round) can rebuild them."""
+    from flowforge.agents.runtime.event_logger import session_spent
+
+    monkeypatch.delenv("FLOWFORGE_REPLAY", raising=False)
+    usage = SimpleNamespace(total_tokens=2_000_000, prompt_tokens=0, completion_tokens=2_000_000)
+    resp = SimpleNamespace(usage=usage, choices=[SimpleNamespace(message=SimpleNamespace(content="{}"))])
+    fake = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=lambda **_: resp)))
+    logger = EventLogger(tmp_path)
+    rt = ModelRuntime(logger=logger)
+    rt._client = fake
+    rt.complete("muse-spark-1.3", "round 1 prompt")
+    expected = cost_for("muse-spark-1.3", 2_000_000)
+    assert session_spent(logger.path) == pytest.approx(expected)
+
+    nxt = ModelRuntime(logger=logger)  # what round 2 builds
+    nxt.spent = session_spent(logger.path)
+    with pytest.raises(BudgetExceededError):
+        nxt.check_budget(SESSION_LIMIT - expected + 0.01)
+
+
+def test_session_spent_ignores_legacy_and_bad_lines(tmp_path) -> None:
+    from flowforge.agents.runtime.event_logger import session_spent
+
+    path = tmp_path / "events.jsonl"
+    assert session_spent(path) == 0.0
+    path.write_text('{"tokens": 5}\nnot json\n{"dollars": 1.5}\n{"dollars": true}\n[]\n', encoding="utf-8")
+    assert session_spent(path) == 1.5

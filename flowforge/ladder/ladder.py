@@ -79,7 +79,8 @@ def run_ladder_rung01(expressions: list[str], invariants, basis, target) -> list
     return halving(scored)
 
 
-def rung2_short(candidates: list[dict], short_eval: Callable[[str], float] | None = None) -> list[dict]:
+def rung2_short(candidates: list[dict], short_eval: Callable[[str], float] | None = None,
+                score_key: str = "score") -> list[dict]:
     """Rung 2 short run: optionally rescore cheaply, then drop the bottom 50%.
 
     short_eval(expression) -> error (lower is better). Without it, rung 1
@@ -101,7 +102,7 @@ def rung2_short(candidates: list[dict], short_eval: Callable[[str], float] | Non
                 entry["error_rung2"] = str(exc)
             entry["score"] = entry["score_rung2"]
         scored.append(entry)
-    return halving(scored)
+    return halving(scored, score_key=score_key)
 
 
 def _realizability(pred, b_rans=None) -> tuple[bool, float]:

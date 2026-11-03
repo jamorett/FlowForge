@@ -150,6 +150,22 @@ _MOCK_DATA: dict[str, dict[str, Any]] = {
         "risk_audit": "Mock redteam: no solver runs.",
         "flows": [{"kind": "periodic_hill", "alpha": 1.5, "reynolds": 10595}],
     },
+    # loop v2 roles (dry runs swap in these mocks)
+    "diagnostician": {
+        "risk_audit": "Mock diagnosis: no real scores.",
+        "failure_regions": ["bump_h42"],
+        "next_hypothesis": "Let the T2 coefficient depend on I1.",
+    },
+    "theorist_v2": {
+        "risk_audit": "Mock proposals: synthetic expressions only.",
+        "expressions": ["0.1 * T1 + 0.1 * T2 + 0.1 * T3", "0.1 * T1 + 0.1 * tanh(I1) * T2"],
+        "mechanisms": ["strain_rate_sensitivity"],
+    },
+    "reviser": {
+        "risk_audit": "Mock revision: synthetic expression only.",
+        "expressions": ["0.1 * T1 + 0.1 * T2"],
+        "mechanisms": ["strain_rate_sensitivity"],
+    },
     "composer": {
         "risk_audit": "Mock composition: no gate fitting.",
         "modules": ["I1", "tanh(I1)"],

@@ -19,6 +19,26 @@ def prompt_hash(prompt: str) -> str:
     return hashlib.sha256(prompt.encode()).hexdigest()
 
 
+def session_spent(events_path: Path) -> float:
+    """Sum the ``dollars`` logged on model-call events of one session.
+
+    Events written before calls carried ``dollars`` count as 0, so legacy
+    sessions under-count; new sessions are exact.
+    """
+    path = Path(events_path)
+    if not path.exists():
+        return 0.0
+    total = 0.0
+    for line in path.read_text(encoding="utf-8").splitlines():
+        try:
+            value = json.loads(line).get("dollars") if line.strip() else None
+        except (json.JSONDecodeError, AttributeError):
+            continue
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0:
+            total += float(value)
+    return total
+
+
 class EventLogger:
     """Append-only writer/reader for one session's events.jsonl."""
 

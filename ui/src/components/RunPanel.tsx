@@ -4,7 +4,7 @@ import { controlRun, fetchRuns, startExperimentRun, startSessionRun, type RunInf
 
 type Kind = "session" | "experiment";
 interface Form { session: string; rounds: number; groups: number; redteam: boolean; mock: boolean; budget_usd: number;
-  seeds: [number, number, number]; dry_run: boolean; archive_existing: boolean; sam: boolean }
+  seeds: [number, number, number]; dry_run: boolean; archive_existing: boolean; sam: boolean; loop: "v1" | "v2" }
 
 const STATUS_STYLE: Record<string, string> = {
   running: "text-emerald-300 border-emerald-600", paused: "text-amber-300 border-amber-600", stopping: "text-amber-300 border-amber-600",
@@ -36,7 +36,7 @@ export function RunPanel({ session, onWatch }: { session: string; onWatch: (s: s
   const q = useQuery({ queryKey: ["runs"], queryFn: fetchRuns, refetchInterval: 3000 });
   const [kind, setKind] = useState<Kind>("session");
   const [f, setF] = useState<Form>({ session, rounds: 1, groups: 1, redteam: true, mock: true, budget_usd: 1,
-    seeds: [42, 43, 44], dry_run: true, archive_existing: false, sam: false });
+    seeds: [42, 43, 44], dry_run: true, archive_existing: false, sam: false, loop: "v1" });
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const set = (p: Partial<Form>) => setF((x) => ({ ...x, ...p }));
@@ -47,7 +47,7 @@ export function RunPanel({ session, onWatch }: { session: string; onWatch: (s: s
 
   const applyPreset = (p: RunPreset) => {
     setKind(p.kind);
-    set({ ...p.params, ...(p.kind === "session" ? { session: p.params.mock ? `${session}-mock` : `ui-${p.id}-${Date.now() % 100000}` } : {}) } as Partial<Form>);
+    set({ loop: "v1", ...p.params, ...(p.kind === "session" ? { session: p.params.mock ? `${session}-mock` : `ui-${p.id}-${Date.now() % 100000}` } : {}) } as Partial<Form>);
     setMsg(`${p.label}: ${p.description}`);
   };
 
@@ -56,8 +56,8 @@ export function RunPanel({ session, onWatch }: { session: string; onWatch: (s: s
     setBusy(true); setMsg(null);
     try {
       const res = kind === "session"
-        ? await startSessionRun({ session: f.session, rounds: f.rounds, groups: f.groups, redteam: f.redteam, mock: f.mock, budget_usd: f.budget_usd, confirm_live: live, sam: f.sam })
-        : await startExperimentRun({ rounds: f.rounds, groups: f.groups, seeds: f.seeds, budget_usd: f.budget_usd, dry_run: f.dry_run, archive_existing: f.archive_existing, confirm_live: live, sam: f.sam });
+        ? await startSessionRun({ session: f.session, rounds: f.rounds, groups: f.groups, redteam: f.redteam, mock: f.mock, budget_usd: f.budget_usd, confirm_live: live, sam: f.sam, loop: f.loop })
+        : await startExperimentRun({ rounds: f.rounds, groups: f.groups, seeds: f.seeds, budget_usd: f.budget_usd, dry_run: f.dry_run, archive_existing: f.archive_existing, confirm_live: live, sam: f.sam, loop: f.loop });
       if (res.status === "started" && res.run) {
         setMsg(`Started ${res.run.kind} run ${res.run.id}.`);
         onWatch(res.run.sessions[0]);
@@ -127,6 +127,8 @@ export function RunPanel({ session, onWatch }: { session: string; onWatch: (s: s
           <Toggle label="archive existing sessions" checked={f.archive_existing} onChange={(v) => set({ archive_existing: v })}
             hint="moves old arms-* sessions to runs/_archive-*/ so their history cannot leak into this run" />
         </>)}
+        <Toggle label="loop v2" checked={f.loop === "v2"} onChange={(v) => set(v && kind === "session" ? { loop: "v2", mock: false } : { loop: v ? "v2" : "v1" })}
+          hint="v2: diagnose → propose → score → revise, population carried across rounds. No mock mode (use the experiment dry run for a free check). Off = the original 12-step round." />
         <Toggle label="SAM 3.1 segmentation" checked={f.sam} onChange={(v) => set({ sam: v })} danger
           hint="Analyst error maps segmented by SAM 3.1 (live API, extra cost, cached per image); off = local segmentation. Same setting for both swarm arms." />
         <span className={`text-xs font-mono ${live ? "text-amber-300" : "text-emerald-300"}`}>
@@ -152,7 +154,7 @@ export function RunPanel({ session, onWatch }: { session: string; onWatch: (s: s
                   <span className="font-mono text-neutral-300">{r.kind} {r.id}</span>
                   <span className="text-neutral-500">
                     {r.kind === "session" ? `${r.rounds_done}/${total} rounds${r.round_now ? ` · round ${r.round_now} running` : ""}` : `${r.params.rounds}×${r.params.groups} per session · 6 swarm sessions + sparse`}
-                    {r.params.mock || r.params.dry_run ? " · mock" : " · live"}{r.params.redteam === false ? " · no red team" : ""}{r.params.sam ? " · SAM 3.1" : ""}
+                    {r.params.mock || r.params.dry_run ? " · mock" : " · live"}{r.params.redteam === false ? " · no red team" : ""}{r.params.sam ? " · SAM 3.1" : ""}{r.params.loop === "v2" ? " · loop v2" : ""}
                   </span>
                   <span className="ml-auto flex gap-1">
                     {active && r.status !== "paused" && <button className={`${btn} bg-white/5 text-neutral-200`} onClick={() => act(r, "pause")}>⏸ pause</button>}

@@ -28,6 +28,7 @@ SAFE = re.compile(r"^[A-Za-z0-9_-]+$")
 MAX_ROUNDS, MAX_GROUPS = 20, 4
 EST_USD_PER_ROUND_GROUP = 0.10  # observed ~$0.07 per round per group (frozen, 2026-11-01); rounded up
 ARMS_SWARM = ("swarm", "swarm_no_redteam")
+LOOPS = ("v1", "v2")  # v1 = orchestrator.round, v2 = orchestrator.loop_v2 (decisions.md 2026-11-03)
 REPO = Path(__file__).resolve().parents[2]
 
 PRESETS = [
@@ -40,6 +41,11 @@ PRESETS = [
     {"id": "session", "label": "Research session (5 × 2)", "kind": "session",
      "description": "5 live rounds × 2 groups with the red team — one full research line (~$0.7).",
      "params": {"rounds": 5, "groups": 2, "redteam": True, "mock": False, "sam": True, "budget_usd": 2.0}},
+    {"id": "session-v2", "label": "Research session, loop v2 (5 × 2)", "kind": "session",
+     "description": "5 live rounds × 2 groups on loop v2: diagnose → propose → score → revise, "
+                    "with a population carried across rounds (~$0.8).",
+     "params": {"rounds": 5, "groups": 2, "redteam": True, "mock": False, "sam": False, "budget_usd": 2.0,
+                "loop": "v2"}},
     {"id": "ablation", "label": "Ablation session (no red team)", "kind": "session",
      "description": "Same as the research session with the red team off (RP1 contrast).",
      "params": {"rounds": 5, "groups": 2, "redteam": False, "mock": False, "sam": True, "budget_usd": 2.0}},
@@ -157,8 +163,13 @@ class RunManager:
 
     # ---- session runs --------------------------------------------------------------------
     def start_session(self, session: str, rounds: int, groups: int, redteam: bool, mock: bool,
-                      budget_usd: float, confirm_live: bool = False, sam: bool = False) -> dict:
+                      budget_usd: float, confirm_live: bool = False, sam: bool = False,
+                      loop: str = "v1") -> dict:
         err = self._validate(rounds, groups, budget_usd, live=(not mock) or sam, confirm=confirm_live)
+        if not err and loop not in LOOPS:
+            err = f"loop must be one of {LOOPS}"
+        if not err and loop == "v2" and mock:
+            err = "loop v2 has no mock mode: use the experiment dry run to check it for free"
         if err or not SAFE.match(session):
             return {"status": "rejected", "reason": err or "invalid session id (letters, digits, _ and - only)"}
         with self._lock:
@@ -166,7 +177,7 @@ class RunManager:
                 return {"status": "rejected", "reason": f"a run is already active in session '{session}'"}
             run = Run(id=uuid.uuid4().hex[:8], kind="session", sessions=[session],
                       params={"session": session, "rounds": rounds, "groups": groups, "redteam": redteam,
-                              "mock": mock, "sam": sam, "budget_usd": budget_usd,
+                              "mock": mock, "sam": sam, "budget_usd": budget_usd, "loop": loop,
                               "first_round": _next_round(session)})
             ctl = {"pause": threading.Event(), "stop": threading.Event()}
             self.runs[run.id], self._ctl[run.id] = run, ctl
@@ -174,9 +185,11 @@ class RunManager:
         return {"status": "started", "run": asdict(run)}
 
     def _session_loop(self, run: Run, ctl: dict) -> None:
-        from flowforge.orchestrator.round import run_round
-
         p = run.params
+        if p.get("loop") == "v2":
+            from flowforge.orchestrator.loop_v2 import run_round
+        else:
+            from flowforge.orchestrator.round import run_round
         try:
             for r in range(p["first_round"], p["first_round"] + p["rounds"]):
                 while ctl["pause"].is_set() and not ctl["stop"].is_set():
@@ -206,14 +219,17 @@ class RunManager:
     # ---- experiment ----------------------------------------------------------------------
     def start_experiment(self, rounds: int, groups: int, seeds: list[int], budget_usd: float,
                          dry_run: bool, archive_existing: bool = False, confirm_live: bool = False,
-                         sam: bool = False) -> dict:
+                         sam: bool = False, loop: str = "v1") -> dict:
         err = self._validate(rounds, groups, budget_usd, live=(not dry_run) or sam, confirm=confirm_live)
+        if not err and loop not in LOOPS:
+            err = f"loop must be one of {LOOPS}"
         if not err and (len(seeds) != 3 or len(set(seeds)) != 3):
             err = "the protocol needs exactly 3 distinct session seeds"
         if err:
             return {"status": "rejected", "reason": err}
         prefix = "dryrun-" if dry_run else ""
-        sessions = [f"{prefix}arms-{arm}-s{s}" for arm in ARMS_SWARM for s in seeds]
+        tag = "-v2" if loop == "v2" else ""  # same folder names as run_arms.py --loop
+        sessions = [f"{prefix}arms-{arm}{tag}-s{s}" for arm in ARMS_SWARM for s in seeds]
         with self._lock:
             if any(self._active(r) and r.kind == "experiment" for r in self.runs.values()):
                 return {"status": "rejected", "reason": "an experiment is already running"}
@@ -235,12 +251,13 @@ class RunManager:
             log = Path("runs") / "arms" / f"{'dryrun' if dry_run else 'arms'}-{stamp}.log"
             cmd = [sys.executable, str(REPO / "scripts" / "run_arms.py"), "--rounds", str(rounds),
                    "--seeds", ",".join(map(str, seeds)), "--groups", str(groups), "--budget-usd", str(budget_usd),
-                   "--out", str(out), "--control-dir", str(ctl_dir)] + (["--dry-run"] if dry_run else [])                 + (["--sam"] if sam else [])
+                   "--out", str(out), "--control-dir", str(ctl_dir), "--loop", loop] \
+                + (["--dry-run"] if dry_run else []) + (["--sam"] if sam else [])
             fh = open(log, "w", encoding="utf-8")
             proc = subprocess.Popen(cmd, stdout=fh, stderr=subprocess.STDOUT, cwd=str(Path.cwd()))
             run = Run(id=rid, kind="experiment", sessions=sessions, out_file=str(out), log_file=str(log),
                       params={"rounds": rounds, "groups": groups, "seeds": seeds, "budget_usd": budget_usd,
-                              "dry_run": dry_run, "sam": sam, "archived": existing},
+                              "dry_run": dry_run, "sam": sam, "loop": loop, "archived": existing},
                       message=f"archived {len(existing)} old session(s)" if existing else "")
             self.runs[rid], self._ctl[rid] = run, {"proc": proc, "dir": ctl_dir, "log": fh}
         return {"status": "started", "run": asdict(run)}

@@ -101,3 +101,39 @@ def test_experiment_refuses_reused_sessions_until_archived(mgr, monkeypatch):
     assert "--control-dir" in launched[0] and "--dry-run" not in launched[0]
     runs = mgr.list()
     assert runs[0]["status"] == "finished" and runs[0]["message"] == "finished without a result file"
+
+
+def test_loop_v2_session_uses_loop_v2_and_rejects_mock(mgr, monkeypatch):
+    assert mgr.start_session("s", 1, 1, True, True, 1.0, loop="v2")["status"] == "rejected"
+    assert mgr.start_session("s", 1, 1, True, False, 1.0, confirm_live=True, loop="v3")["status"] == "rejected"
+    used = []
+    monkeypatch.setattr("flowforge.orchestrator.round.run_round",
+                        lambda *a, **k: used.append("v1") or {"status": "ok", "dollars_spent": 0.0})
+    monkeypatch.setattr("flowforge.orchestrator.loop_v2.run_round",
+                        lambda *a, **k: used.append("v2") or {"status": "ok", "dollars_spent": 0.0})
+    res = mgr.start_session("s", 1, 1, True, False, 1.0, confirm_live=True, loop="v2")
+    _wait(mgr.runs[res["run"]["id"]])
+    assert used == ["v2"] and res["run"]["params"]["loop"] == "v2"
+
+
+def test_loop_v2_experiment_passes_flag_and_checks_v2_sessions(mgr, monkeypatch):
+    (Path("runs") / "arms-swarm-s42").mkdir(parents=True)  # a v1 folder must not block a v2 run
+    launched = []
+
+    class FakeProc:
+        def poll(self):
+            return None
+
+    monkeypatch.setattr(rc.subprocess, "Popen", lambda cmd, **kw: launched.append(cmd) or FakeProc())
+    res = mgr.start_experiment(1, 1, [42, 43, 44], 5.0, dry_run=False, confirm_live=True, loop="v2")
+    assert res["status"] == "started", res
+    cmd = launched[0]
+    assert cmd[cmd.index("--loop") + 1] == "v2"
+    assert "arms-swarm-v2-s42" in res["run"]["sessions"]
+
+
+def test_dry_run_mocks_cover_loop_v2_roles():
+    from flowforge.agents.dispatcher import dispatch_role_mock
+
+    for role in ("diagnostician", "theorist_v2", "reviser"):
+        assert dispatch_role_mock(role).risk_audit

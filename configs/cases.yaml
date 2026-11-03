@@ -18,3 +18,49 @@ cases:
   - id: nasa_wall_mounted_hump
     split: locked
     source: closure_challenge
+  # data v3 (decisions.md 2026-11-03)
+  - id: bump_h20
+    split: train
+    source: curated
+  - id: bump_h31
+    split: train
+    source: curated
+  - id: bump_h42
+    split: train
+    source: curated
+  - id: flat_plate_re1000
+    split: train
+    source: curated
+  - id: flat_plate_re1410
+    split: train
+    source: curated
+  - id: flat_plate_re2000
+    split: train
+    source: curated
+  - id: flat_plate_re2540
+    split: train
+    source: curated
+  - id: flat_plate_re3030
+    split: train
+    source: curated
+  - id: flat_plate_re3270
+    split: train
+    source: curated
+  - id: flat_plate_re3630
+    split: train
+    source: curated
+  - id: flat_plate_re3970
+    split: train
+    source: curated
+  - id: flat_plate_re4060
+    split: train
+    source: curated
+  - id: bump_h26
+    split: redteam
+    source: curated
+  - id: bump_h38
+    split: redteam
+    source: curated
+  - id: converging_diverging_channel_re20580
+    split: redteam
+    source: curated

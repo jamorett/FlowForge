@@ -234,12 +234,54 @@ def _save_frozen_break(case_id: str, expression: str, ratio: float, flow: dict |
         logger.warning("persist frozen attack failed: %s", exc)
 
 
+def selection_score(expression: str, invariants, basis, target,
+                    attack_ids: list[str]) -> float:
+    """max(train ratio, ratio on each attack case); inf when unscorable.
+
+    Constants are fitted on train only; attack cases are never fitted on.
+    """
+    from flowforge.data.frozen_fields import score_expression, score_on_cases
+
+    try:
+        selection = float(score_expression(expression, invariants, basis, target).get("ratio"))
+        if np.isnan(selection):
+            raise ValueError("NaN train ratio")
+    except (TypeError, ValueError, KeyError, AssertionError) as exc:
+        logger.warning("champion train scoring failed for %s: %s", expression, exc)
+        return float("inf")
+    if not attack_ids or not np.isfinite(selection):
+        return selection
+    attack_scores = score_on_cases(expression, attack_ids, max_points_per_case=4000)
+    for case_id in attack_ids:
+        payload = attack_scores.get(case_id, {})
+        if not isinstance(payload, dict) or "error" in payload:
+            continue
+        try:
+            attack_ratio = float(payload.get("ratio"))
+        except (TypeError, ValueError):
+            logger.warning("champion attack bad ratio %s on %s", expression, case_id)
+            continue
+        if np.isnan(attack_ratio):
+            logger.warning("champion attack NaN ratio %s on %s", expression, case_id)
+            return float("inf")
+        selection = max(selection, attack_ratio)
+    return selection
+
+
+def _literal_constants(expression: str) -> list[float]:
+    """Numeric literals as written (the fitted constants), for DL2."""
+    from flowforge.dsl.expr_fit import _find_literal_tokens
+
+    return [float(t.string) for t in _find_literal_tokens(expression)]
+
+
 def select_champion_by_train_attack(
     finalists: list[dict],
     invariants: dict[str, np.ndarray],
     basis: dict[str, np.ndarray],
     target: np.ndarray,
     attack_cases: list[str] | None = None,
+    selection: str = "train",
 ) -> dict | None:
     """Pick the round champion by train + attack worst-case ratio.
 
@@ -251,9 +293,8 @@ def select_champion_by_train_attack(
     ``{"expression", "dl", "worst_error", "selection_ratio",
     "selection_metric"}`` or ``None`` when the pool is empty.
     """
-    from flowforge.data.frozen_fields import score_expression, score_on_cases
     from flowforge.dsl.parser import complexity, validate_candidate
-    from flowforge.elegance.engine import description_length, pick_champion
+    from flowforge.elegance.engine import description_length, description_length_v2, pick_champion
 
     if not finalists:
         return None
@@ -261,43 +302,22 @@ def select_champion_by_train_attack(
     enriched: list[dict] = []
     for item in finalists:
         expression = str(item.get("expression", ""))
-        validate_candidate(expression)
-        try:
-            train_payload = score_expression(expression, invariants, basis, target)
-            train_ratio = float(train_payload.get("ratio"))
-            if np.isnan(train_ratio):
-                raise ValueError("NaN train ratio")
-        except (TypeError, ValueError, KeyError, AssertionError) as exc:
-            logger.warning("champion train scoring failed for %s: %s", expression, exc)
-            train_ratio = float("inf")
-        selection = float(train_ratio)
-        if attack_ids and np.isfinite(selection):
-            attack_scores = score_on_cases(expression, attack_ids, max_points_per_case=4000)
-            for case_id in attack_ids:
-                payload = attack_scores.get(case_id, {})
-                if not isinstance(payload, dict) or "error" in payload:
-                    continue
-                try:
-                    attack_ratio = float(payload.get("ratio"))
-                except (TypeError, ValueError):
-                    logger.warning("champion attack bad ratio %s on %s", expression, case_id)
-                    continue
-                if np.isnan(attack_ratio):
-                    logger.warning("champion attack NaN ratio %s on %s", expression, case_id)
-                    selection = float("inf")
-                    break
-                if attack_ratio > selection:
-                    selection = float(attack_ratio)
+        nodes = complexity(validate_candidate(expression))
+        score = item.get("selection") if selection == "heldout" else None
+        if score is None:
+            score = selection_score(expression, invariants, basis, target, attack_ids)
         enriched.append({
             "id": expression,
-            "worst_error": float(selection),
-            "dl": description_length(complexity(validate_candidate(expression)), []),
+            "worst_error": float(score),
+            "dl": (description_length_v2(nodes, _literal_constants(expression))
+                   if selection == "heldout" else description_length(nodes, [])),
         })
     best = pick_champion(enriched)
     return {"expression": best["id"], "dl": best["dl"],
             "worst_error": float(best["worst_error"]),
             "selection_ratio": float(best["worst_error"]),
-            "selection_metric": "max(train_ratio, attack_ratios)"}
+            "selection_metric": "max(train_ratio, attack_ratios)",
+            "selection": selection}
 
 
 def _run_round_live(round_no: int, candidates: tuple[str, ...],
@@ -305,7 +325,8 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
                     event_logger, events_path: Path,
                     groups: int = 1, group_ids: list | None = None,
                     mechanisms: list | None = None,
-                    redteam: bool = True, sam: bool = False) -> dict:
+                    redteam: bool = True, sam: bool = False,
+                    selection: str = "train") -> dict:
     """Execute a live round with actual LLM calls via the dispatcher.
 
     Each role is dispatched through the prompt loader -> ModelRuntime
@@ -315,7 +336,7 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
     groups.
     """
     from flowforge.agents.dispatcher import dispatch_role, RoleDispatchError
-    from flowforge.agents.runtime.client import ModelRuntime, BudgetExceededError
+    from flowforge.agents.runtime.client import SESSION_LIMIT, ModelRuntime, BudgetExceededError
     from flowforge.ladder.ladder import (
         apriori_mse, halving, rung0 as rung0_pass, rung1_scores,
         realizable_only, rung2_short, rung3_full,
@@ -325,11 +346,17 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
 
     previous_results = session_history(events_path)
     runtime = ModelRuntime(logger=event_logger)
+    # The dollar limit is per session, not per round: start from what earlier rounds spent.
+    from flowforge.agents.runtime.event_logger import session_spent
+
+    session_spent_before = session_spent(events_path)
+    runtime.spent = session_spent_before
     from flowforge.data.frozen_fields import (
         attack_case_for,
         available_attack_flows,
         load_frozen_fields,
         redteam_case_ids,
+        selection_case_ids,
         score_expression,
         score_on_cases,
         train_case_ids,
@@ -357,7 +384,7 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
     board_context = {
         "findings": lib_context.get("findings", []),
         "scores": [],
-        "budget_left": f"${runtime.spent:.2f} / $50.00",
+        "budget_left": f"${runtime.spent:.2f} spent of ${SESSION_LIMIT:.2f}",
         "round": round_no,
         "library_modules": lib_context.get("modules", []),
     }
@@ -486,7 +513,16 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
         })
 
     passed0 = [e for e in expressions if rung0_pass(e)]
-    rung1 = halving(rung1_scores(passed0, inv, basis, target)) if passed0 else []
+    heldout = selection == "heldout"
+    sel_cases = selection_case_ids() if heldout else []
+    scored1 = rung1_scores(passed0, inv, basis, target) if passed0 else []
+    if heldout:  # rank on flows the constants were not fitted on (decisions.md 2026-11-03)
+        for item in scored1:
+            item["selection"] = selection_score(item["expression"], inv, basis, target, sel_cases)
+    if not scored1:
+        rung1 = []
+    else:  # the train path keeps the decision run's exact calls
+        rung1 = halving(scored1, score_key="selection") if heldout else halving(scored1)
     _log_rung("rung0", passed0)
     _log_rung("rung1", rung1)
     survivors = rung1
@@ -590,7 +626,8 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
     realizable = realizable_only(advanced, inv, basis, b_rans=b_rans)
     kept = {s.get("expression") for s in realizable}
     dropped = [s.get("expression") for s in advanced if s.get("expression") not in kept]
-    rung2 = rung2_short(realizable, short_eval=short_eval)
+    rung2 = (rung2_short(realizable, short_eval=short_eval, score_key="selection") if heldout
+             else rung2_short(realizable, short_eval=short_eval))
     _log_rung("rung2", rung2, non_realizable=dropped)
     rung3 = rung3_full(rung2, inv, basis, target, b_rans=b_rans)
     _log_rung("rung3", rung3)
@@ -676,7 +713,8 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
         # (reported below but never read for selection to avoid leakage).
         champion = select_champion_by_train_attack(
             champion_pool, inv, basis, target,
-            attack_cases=attack_cases if redteam else [],
+            attack_cases=sel_cases if heldout else (attack_cases if redteam else []),
+            selection=selection,
         )
     if champion is not None:
         # Validation is held-out: computed for reporting only, never for selection.
@@ -745,7 +783,7 @@ def _run_round_live(round_no: int, candidates: tuple[str, ...],
         "event_count": len(ROUND_STEPS) + max(0, len(group_ids) - 1) + 1,
         "steps": list(ROUND_STEPS),
         "tokens_used": runtime.tokens,
-        "dollars_spent": round(runtime.spent, 4),
+        "dollars_spent": round(runtime.spent - session_spent_before, 4),  # this round only
     }
 
 
@@ -761,7 +799,7 @@ def run_round(round_no: int, mock: bool = False,
               candidates: tuple[str, ...] = MOCK_CANDIDATES,
               session_dir=None, session: str | None = None,
               runs_root=None, groups: int = 1, redteam: bool = True,
-              sam: bool = False, **kwargs) -> dict:
+              sam: bool = False, selection: str = "train", **kwargs) -> dict:
     """Run one round. ``groups`` staffs parallel research groups (default 1).
 
     With one group the event chain is exactly the 12 classic steps.
@@ -779,6 +817,8 @@ def run_round(round_no: int, mock: bool = False,
     if kwargs:
         raise TypeError(f"run_round got unexpected arguments: {sorted(kwargs)}")
 
+    if selection not in ("train", "heldout"):
+        raise ValueError(f"selection must be 'train' or 'heldout', got {selection!r}")
     if not isinstance(groups, int) or groups < 1:
         raise ValueError(f"groups must be a positive int, got {groups!r}")
     group_ids = [f"g{i}" for i in range(groups)]
@@ -825,7 +865,7 @@ def run_round(round_no: int, mock: bool = False,
                 round_no, candidates, session_name,
                 resolved_dir, event_logger, events_path,
                 groups=groups, group_ids=group_ids, mechanisms=mechanisms,
-                redteam=redteam, sam=sam,
+                redteam=redteam, sam=sam, selection=selection,
             )
         except Exception as exc:
             logger.error("Live round failed: %s", exc)

@@ -211,3 +211,167 @@ convdiv (ratio 0.62–0.65). Seed 44's champion has extreme constants
 (`div(964.265, -63.2677 + I1) * T1 + 2.94592 * tanh(964.615 * I2) * T2`), effectively a constant
 T1 term plus a sign switch on T2. SAM, Analyst v3 and the threshold changed together, so the gain
 over the decision swarm arm cannot be attributed to one of them; one exploratory run among several.
+## 2026-11-02 — Constant-coefficient control (exploratory, **post hoc**) and a diagnosis of the arms
+
+**Post hoc, not an RP result.** The control's form was chosen after a scratch probe
+(`scratch/probe_representation_ceiling.py`, not committed) had looked at the validation and red-team
+cases. It is reported so the arms can be read, never pooled into RP1/RP2, and it does not touch
+`data/locked/`.
+
+**Control** (`scripts/run_controls.py --control constant`, same protocol as the decision run: 5 rounds
+× 2 groups, seeds 42–46, frozen; output `runs/arms/control-constant-2026-11-02.json`, $0.00, no model
+calls): the proposer always returns constant-coefficient forms (`c1·T1 + c2·T2 + c3·T3` and two
+subsets), the red team is stubbed with every available frozen flow, and fitter, ladder, realizability
+gate, red-team screen and champion selection are unchanged. Every seed picks
+`0.333·T1 − 3.05432·T2 + 1.5·T3`: train 0.636, **worst_validation_ratio 0.761** (spread 0, the arm is
+deterministic), realizable on train, no red-team break (convdiv 0.617). Decision run for reference:
+swarm 0.845 ± 0.018, swarm_no_redteam 0.858 ± 0.011, sparse_baseline 0.823 ± 0.004. The decision-run
+JSON is not on this machine, so the script's exact p-values were not computed.
+
+**Probe readings (scratch, not results):** per-point least squares on T1..T3 reproduces `a_delta`
+exactly on every case (ratio 0.000), so the tensor basis is not the limit. Polynomial coefficients in
+(I1, I2) fit train better (0.53 → 0.44) and validation worse (1.9, worse than SST); adding a wall
+marker √k/(ωd) makes it worse still. On these cases the invariants carry little information that
+transfers between geometries.
+
+**Reading:** swarm champions are this constant model plus invariant terms that are mostly constants
+in disguise (with I2 ≈ −0.04, `−35.2·I2·T3` ≈ `+1.4·T3`). Those terms lower the train ratio
+(0.636 → ~0.58) and raise the validation ratio. Champion selection minimizes train ratio, the 3%
+elegance band is measured on train, and `description_length` is called with no constants (0 bits per
+constant), so the selection rule cannot pick the constant model. This explains why proposer choice
+(swarm, single LLM, random grammar) does not change the outcome: more search fits train harder.
+
+**Not changed:** the decision-run result, `configs/tolerances.yaml`, the splits, the selection rule
+(feature freeze). Changing selection (e.g. leave-one-flow-out CV, constant bits in DL) is a new
+protocol and would need its own registration.
+
+## 2026-11-02 — Dollar limit is per session, not per round (bug fix)
+
+`_run_round_live` built a fresh `ModelRuntime` every round, so `SESSION_LIMIT` ($50) only capped one
+round, and the Board was always told `$0.00 / $50.00`. Each model call now logs its `dollars`, and a
+round starts its runtime at `event_logger.session_spent(events.jsonl)`. `dollars_spent` in the round
+result stays per round, so the running totals in `run_arms.py` and `run_control.py` are unchanged.
+Sessions logged before this fix carry no `dollars` and count as $0 (under-count for legacy sessions
+only). No scoring code changed; decision-run results are unaffected.
+
+## 2026-11-03 — Held-out selection rule (`selection="heldout"`), registered before computing
+
+**Why:** every filter that picks a candidate ranks by the train ratio on two near-identical hills
+(rung-1 and rung-2 halving, round champion, seed champion, the 3% band), and the champion DL charges
+0 bits per constant. More search therefore fits train harder (entry above). This rule picks on flows
+the constants were not fitted on.
+
+**Rule (opt-in; `selection="train"` stays the default and reproduces the decision run):**
+- Selection flows S: every available frozen attack hill plus the `redteam` split. Never validation,
+  never locked. Constants are still fitted on train only (attack flows are never training).
+- Selection score = max(train ratio, ratio on every case in S); a non-finite or failed score is inf.
+- Rung-1 and rung-2 halving rank by the selection score (still drop the bottom 50%); rung 0,
+  realizability and the red-team screen are unchanged.
+- Champion: within 3% of the best selection score (margin unchanged), lowest DL2, where
+  DL2 = nodes·log2(V) + Σ bits(c); bits(c) = log2(|SNAP_CANDIDATES|) for a snapped value, else 16.
+- Seed champion: lowest selection score across rounds.
+- Metric unchanged: `worst_validation_ratio` on `curved_step`.
+
+**Experiment E1 (exploratory, $0, no LLM):** the seeded `random_grammar` proposer, seeds 42–46,
+5 rounds × 2 groups, red team stubbed with every available frozen flow, run twice: `selection=train`
+and `selection=heldout`. Same proposal stream, so the difference is the selection rule only. Also the
+`constant` control under `heldout` as a sanity check. Caveat: some validation numbers of candidates
+are already known (entry above), so E1 is exploratory, not confirmatory.
+
+**Consequence for RP1:** under `heldout`, both swarm arms select on S, so the no-red-team ablation
+loses most of its contrast (only the exclusion screen differs). RP1 stays on the decision run.
+
+**E1 result (2026-11-03, exploratory, frozen, $0, `runs/arms/e1-*.json`):** random_grammar with
+`selection=train` 0.837 ± 0.016, with `selection=heldout` 0.833 ± 0.025. Only seed 42 changed its
+champion (0.811 → 0.791); the other four picked the same expression. Constant control under
+`heldout`: 0.761 on every seed (unchanged).
+
+**Why the rule does not help, and a correction to the reading above:** on every non-validation flow
+(both train hills, the α 0.5/0.8/1.2 hills, convdiv) the invariant-dependent champions beat the
+constant model (e.g. 0.54–0.60 vs 0.62–0.65); they lose only on `curved_step` (0.83–0.85 vs 0.761).
+So the invariant terms are not train noise: they transfer to the hill family and to convdiv, and
+`curved_step` is the one flow where they backfire. The constant model's advantage is visible only on
+the validation case, so no selection that respects the splits can find it, and a single validation
+case cannot say which behavior the locked flows will show. `selection="heldout"` stays as an opt-in
+option; the default is unchanged.
+
+## 2026-11-03 — Data v3: bumps and flat plates join training (registered before computing)
+
+**Why:** with two hills as the only training flows, every flow available for fitting or selection
+says the same thing, and none predicts `curved_step`. A scratch probe on the curated dataset's
+unused families (`scratch/probe_family_cv.py`, never loads `curved_step` or locked data) found the
+best constant coefficients differ strongly by flow (T2: hills −3.05, convdiv −4.13, flat plate
+−5.16, bumps −1.94 → −0.30 with bump height; T1 ≈ 0.25 everywhere). Fitted on hills + bumps +
+convdiv + flat plate together, a quadratic g(I1, I2) gets every family below SST (worst 0.73);
+the constant model does not (bumps 1.46). The invariant terms carry real cross-flow information
+that two hills cannot pin down.
+
+**Change (same CC-BY-4.0 Kaggle files, same `extract_case_arrays` pipeline):**
+- `train` += parametric bumps `bump_h20`, `bump_h31`, `bump_h42` and the nine zero-pressure-gradient
+  flat plates `flat_plate_re1000` … `flat_plate_re4060` (the spec's canonical "do no harm" suite).
+- `redteam` += `bump_h26`, `bump_h38` (interpolation hold-outs inside the bump family) and
+  `converging_diverging_channel_re20580`.
+- Unchanged: `curved_step` (validation), `converging_diverging_channel` (redteam), the attack hills,
+  the locked cases. The other 15 square-duct Reynolds numbers stay out (same family as locked).
+- Hold-outs chosen by the rule "alternate bumps, keep both ends in training" before any score on
+  `curved_step` was computed for data v3.
+
+**Consequence:** a new protocol. Results under data v3 are labelled `data=v3` and never pooled with the
+decision run (data v2). Experiment E2 ($0, no LLM): sparse baseline, constant control and
+`random_grammar` (red team stubbed), seeds 42–46, 5 rounds × 2 groups, `selection=train`.
+
+**E2 result (2026-11-03, exploratory, frozen, `data=v3`, $0, `runs/arms/e2-v3-*.json`),
+`worst_validation_ratio` on `curved_step`, seeds 42–46:**
+- sparse_baseline 0.748 ± 0.028 (data v2 decision run: 0.823 ± 0.004)
+- random_grammar (red team stubbed) 0.784 ± 0.055 (data v2, E1: 0.837 ± 0.016)
+- constant control 0.943 (data v2: 0.761)
+
+Reading: wider training data lowers validation error for every model with invariant dependence, and
+removes the constant model's edge, as the family probe predicted. Still frozen a priori on one
+validation case; the solver oracle gate is still red, so nothing here is a flow-level (`full`)
+claim. The swarm arms under data v3 have not been run (they need paid API calls).
+
+## 2026-11-03 — E3: swarm arms on data v3 (declared before running, paid API)
+
+**Exploratory**, `data=v3`, frozen. The decision-run command on data v3 and current code:
+`scripts/run_arms.py --rounds 5 --groups 2 --seeds 42,43,44,45,46 --budget-usd 12`, `selection=train`,
+SAM off, red-team break ratio 1.0 (unchanged). Arms: swarm, swarm_no_redteam, sparse_baseline.
+Red-team breaks go to `runs/arms/explore-v3-swarm-attacks/`, not the permanent library. Earlier
+data-v2 session folders moved to `runs/_archive-v2-2026-11-03/` so no round reads data-v2 history.
+Output `runs/arms/e3-v3-arms.json`. Metric: `worst_validation_ratio` on `curved_step`; compared
+descriptively with E2 (same data) and the decision run (data v2, not pooled).
+
+**E3 restart (same day):** the first launch ran ~5 min per round, so its 7000 s timeout would have
+cut it mid-arm. It was stopped after 3 rounds of swarm seed 42 ($0.62, discarded, sessions in
+`runs/_archive-e3-partial-2026-11-03/`) and relaunched as one process per seed
+(`scratch/arms_seed.py <seed> e3-v3 v1 2.4`: the same `run_arms.collect_swarm_arm` for swarm then
+swarm_no_redteam, $2.40 cap per seed = $12 total), outputs `runs/arms/e3-v3-s<seed>.json`. Protocol
+otherwise unchanged.
+
+## 2026-11-03 — Loop v2 and E4 (registered before any v2 result)
+
+**Loop v2** (`flowforge/orchestrator/loop_v2.py`, opt-in `run_arms.py --loop v2`; `round.py`
+unchanged): diagnostician (LLM, replaces Board + Analyst, runs first, reads the population's per-flow
+train and held-out ratios) → theorist_v2 × G (3 proposals each from the diagnosis) → fit + score
+(one deterministic node: constants on train, per-case train ratios, held-out ratios on attack hills +
+redteam split, realizability) → reviser (same group sees its own per-case scores, revises once) →
+population (top 8, at most 2 per tensor set, carried across rounds in the event log) → champion (same
+3% / DL rule; avoids broken candidates when any unbroken one exists). Coder, Composer, Skeptic and the
+LLM red team are not dispatched; the red team is a held-out score column. No LLM context contains
+validation (unit test). Seed champion = the last round's champion (the population is cumulative).
+Prompts `diagnostician`, `theorist_v2`, `reviser` v1. Smoke run on data v3 with a fake LLM: 15 s per
+round.
+
+**E4 (not yet run; needs paid API approval):** loop v2 on data v3, same seeds 42–46, 5 rounds ×
+2 groups, swarm and swarm_no_redteam, $12 cap, compared with E3 (loop v1, same data and seeds),
+E2 sparse and random grammar. Metric unchanged (`worst_validation_ratio`, `curved_step`). The
+question: does the topology let the LLM beat sparse regression and random search?
+
+**E3 result (2026-11-03, exploratory, frozen, `data=v3`, loop v1, $6.43, `runs/arms/e3-v3-s4*.json`),
+`worst_validation_ratio` on `curved_step`:** swarm 0.939 ± 0.035, swarm_no_redteam 0.883 ± 0.043; every
+seed has a champion. Against E2 on the same data and seeds: sparse_baseline 0.748 ± 0.029 and
+random_grammar 0.784 ± 0.055 beat both swarm arms on every pair (U = 0, exact one-sided p = 1.0 for
+"swarm better"). Swarm vs swarm_no_redteam U = 3/25 (p = 0.984 for "red team better"): with the
+v3 red-team split (bumps h26/h38, convdiv Re 20580) the screen at ratio 1.0 removes candidates that
+score better on validation. Loop v1 does not use the wider data; the LLM proposer in this topology
+adds nothing measurable.

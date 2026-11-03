@@ -60,11 +60,8 @@ def evaluate_champion_on_locked(champion_expr: str,
     Returns per-case a-priori MSE and aggregate metrics.
     Raises FileNotFoundError if no locked cases exist.
     """
-    import numpy as np
-
+    from flowforge.data.frozen_fields import score_expression
     from flowforge.data.zarr_store import read_case
-    from flowforge.dsl.evaluate import candidate_anisotropy
-    from flowforge.ladder.ladder import apriori_mse
 
     results: dict[str, float] = {}
     available = []
@@ -81,20 +78,15 @@ def evaluate_champion_on_locked(champion_expr: str,
                  if k.startswith("tensor_basis/")}
         target = data["targets/a_delta"]
 
-        # Evaluate candidate
-        pred = candidate_anisotropy(champion_expr, inv, basis)
-        mse = apriori_mse(pred, target)
-
-        # Also compute baseline (zero correction) for error ratio
-        baseline_pred = np.zeros_like(target)
-        baseline_mse = apriori_mse(baseline_pred, target)
-
-        ratio = mse / max(baseline_mse, 1e-12)
+        # Same scorer as train/validation: rows with non-finite targets are
+        # excluded from both MSEs, so locked ratios are comparable.
+        score = score_expression(champion_expr, inv, basis, target)
         results[case_name] = {
-            "mse": float(mse),
-            "baseline_mse": float(baseline_mse),
-            "error_ratio": float(ratio),
+            "mse": float(score["mse"]),
+            "baseline_mse": float(score["mse_zero"]),
+            "error_ratio": float(score["ratio"]),
             "n_cells": int(target.shape[0]),
+            "n_excluded": int(score["n_excluded"]),
         }
 
     if not available:
@@ -117,6 +109,30 @@ def evaluate_champion_on_locked(champion_expr: str,
     }
 
 
+def evaluate_candidates_on_locked(candidates: dict[str, str],
+                                  locked_root: Path = Path("data/locked")) -> dict:
+    """Score a declared ``{name: expression}`` set as ONE milestone evaluation.
+
+    Like the generalization matrix's locked columns: the whole set is fixed
+    before the vault is opened and recorded on a single log line.
+    """
+    return {name: evaluate_champion_on_locked(expr, locked_root=locked_root)
+            for name, expr in candidates.items()}
+
+
+def _invalid_expressions(expressions: list[str]) -> list[str]:
+    """Messages for expressions the DSL rejects; reads no data."""
+    from flowforge.dsl.parser import validate_candidate
+
+    bad = []
+    for expr in expressions:
+        try:
+            validate_candidate(expr)
+        except Exception as exc:  # any parser rejection
+            bad.append(f"{expr!r}: {exc}")
+    return bad
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Locked milestone evaluation: score a champion on held-out data.")
@@ -126,6 +142,9 @@ def main(argv: list[str] | None = None) -> int:
                         help="DSL expression to evaluate (direct mode)")
     parser.add_argument("--scores-file", default=None,
                         help="JSON file of pre-computed scores (recorder mode)")
+    parser.add_argument("--candidates-file", default=None,
+                        help="JSON object {name: expression}, scored as ONE evaluation; "
+                             "all expressions are validated before data/locked is read")
     parser.add_argument("--reason", default="unspecified",
                         help="reason recorded in the access log")
     parser.add_argument("--log-file", default=str(LOG),
@@ -141,7 +160,44 @@ def main(argv: list[str] | None = None) -> int:
               "Protocol forbids more.", file=sys.stderr)
         return 1
 
+    if args.candidates_file:
+        path = Path(args.candidates_file)
+        try:
+            candidates = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            print(f"error: --candidates-file unreadable: {path}: {exc}", file=sys.stderr)
+            return 2
+        if (not isinstance(candidates, dict) or not candidates
+                or not all(isinstance(v, str) for v in candidates.values())):
+            print("error: --candidates-file must be a non-empty {name: expression} object",
+                  file=sys.stderr)
+            return 2
+        bad = _invalid_expressions(list(candidates.values()))
+        if bad:
+            print("error: invalid expressions; nothing evaluated or recorded: " + "; ".join(bad),
+                  file=sys.stderr)
+            return 2
+        try:
+            results = {"candidates": evaluate_candidates_on_locked(
+                candidates, locked_root=Path(args.locked_root))}
+        except Exception as exc:  # the vault may have been read: still logged
+            print(f"ERROR: Evaluation failed: {exc}", file=sys.stderr)
+            results = {"candidates": candidates, "error": str(exc), "status": "failed"}
+        _record(log, args.milestone, args.reason, results, mode="direct-set")
+        print(f"Locked eval {prior + 1}/{MAX_EVALS} recorded for milestone {args.milestone}.")
+        if "error" in results:
+            return 1
+        for name, res in results["candidates"].items():
+            cases = ", ".join(f"{c}={m['error_ratio']:.4f}" for c, m in res["cases"].items())
+            print(f"  {name}: {cases}  ({res['champion']})")
+        return 0
+
     if args.champion:
+        bad = _invalid_expressions([args.champion])
+        if bad:
+            print(f"error: invalid expression; nothing evaluated or recorded: {bad[0]}",
+                  file=sys.stderr)
+            return 2
         # Direct mode: evaluate the champion expression against locked stores
         try:
             results = evaluate_champion_on_locked(
@@ -194,7 +250,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     else:
-        print("error: provide --champion (direct) or --scores-file (recorder)",
+        print("error: provide --champion or --candidates-file (direct), or --scores-file (recorder)",
               file=sys.stderr)
         return 2
 
