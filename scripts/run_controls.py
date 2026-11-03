@@ -9,8 +9,11 @@ screen, champion selection, validation reporting); only the proposer changes:
   (none of them reaches the champion except through history, which is cut).
 - ``random_grammar``: no proposer LLM; random expressions from the DSL grammar
   (g(I) * T_k terms), seeded per seed and round.
+- ``swarm_sam_rt110``: the full swarm, with SAM 3.1 error regions for the
+  Analyst and the red-team break ratio raised to 1.10; its breaks go to
+  ``runs/arms/explore-sam_rt110-attacks`` instead of the permanent library.
 
-The red-team role stays live in both, as in the swarm arm. Output mirrors
+The red-team role stays live in all, as in the swarm arm. Output mirrors
 ``run_arms.py``, with comparisons against the decision-run arms.
 """
 from __future__ import annotations
@@ -26,7 +29,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from scripts import run_arms  # noqa: E402
 
 STUBBED_ROLES = ("board", "coder", "analyst", "skeptic", "composer")
-CONTROLS = ("single_llm", "random_grammar")
+CONTROLS = ("single_llm", "random_grammar", "swarm_sam_rt110")
+RT110_BREAK_RATIO = 1.10
+RT110_ATTACKS_DIR = Path("runs") / "arms" / "explore-sam_rt110-attacks"
 
 
 def random_expression(rng: random.Random) -> str:
@@ -98,20 +103,30 @@ def main(argv: list[str] | None = None) -> dict:
     from flowforge.agents import dispatcher as dispatcher_module
     from flowforge.agents.dispatcher import ROLE_SCHEMAS, dispatch_role_mock
 
+    from flowforge.orchestrator import round as round_module
+
     original = dispatcher_module.dispatch_role
+    original_ratio, original_attacks = round_module.REDTEAM_BREAK_RATIO, round_module.ATTACKS_DIR
     spent, incomplete = [0.0], [False]
     rows: list[dict] = []
     try:
+        if args.control == "swarm_sam_rt110":
+            run_arms.SAM[0] = True
+            round_module.REDTEAM_BREAK_RATIO = RT110_BREAK_RATIO
+            round_module.ATTACKS_DIR = RT110_ATTACKS_DIR
         for seed in seeds:
-            state = {"calls": 0}
-            dispatcher_module.dispatch_role = make_dispatch(
-                args.control, original, dispatch_role_mock, ROLE_SCHEMAS, seed, state)
+            if args.control != "swarm_sam_rt110":
+                state = {"calls": 0}
+                dispatcher_module.dispatch_role = make_dispatch(
+                    args.control, original, dispatch_role_mock, ROLE_SCHEMAS, seed, state)
             arm = run_arms.collect_swarm_arm(
                 args.control, [seed], args.rounds, args.groups,
                 args.budget_usd, False, spent, incomplete)
             rows.extend(arm["seeds"])
     finally:
         dispatcher_module.dispatch_role = original
+        round_module.REDTEAM_BREAK_RATIO, round_module.ATTACKS_DIR = original_ratio, original_attacks
+        run_arms.SAM[0] = False
 
     metrics = [row["metric"] for row in rows if row["metric"] is not None]
     arms_output = {args.control: {"seeds": rows, "summary": run_arms.summarize_or_none(metrics, len(rows))}}

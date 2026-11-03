@@ -183,3 +183,31 @@ confirms the pre-committed frozen-only fallback; every result stays labelled `fr
 Reading: on this metric the proposer (swarm, single LLM, random grammar) does not change the
 outcome measurably; the fitter and the ladder dominate, and the convdiv red-team screen can
 reject every candidate in a seed.
+
+## 2026-11-02 — Exploratory run: swarm with SAM and red-team break ratio 1.10 (declared before running)
+
+**Exploratory**, after the feature freeze; it does not replace the decision-run or replication
+results and never touches `data/locked/`. Motivation: the convdiv screen broke 48/71 candidates
+and every candidate of replication seed 51, and broken candidates score better on curved_step.
+
+- Arm `swarm_sam_rt110`: the swarm arm (red team on) on current `main` (`b32611c`, which adds
+  SAM-in-the-loop and Analyst v3) with `--sam` (Analyst error regions segmented by SAM 3.1) and
+  the red-team break ratio raised from 1.0 to **1.10** on every probe case (attack hills broke
+  0/71 at 1.0, so in practice this acts on convdiv). Everything else unchanged.
+- Seeds 42–46, 5 rounds × 2 groups, budget $6, via `scripts/run_controls.py --control
+  swarm_sam_rt110`; output `runs/arms/explore-sam_rt110-2026-11-02.json`. Its red-team breaks go
+  to `runs/arms/explore-sam_rt110-attacks/`, not the permanent library.
+- Comparison: exact one-sided Mann–Whitney vs the decision-run swarm, swarm_no_redteam and
+  sparse_baseline (same seeds), descriptive. SAM, Analyst v3 and the threshold change together, so
+  a difference cannot be attributed to one of them.
+
+**Result (same day, `frozen`, exploratory):** `swarm_sam_rt110` ($3.81, complete, every seed has a
+champion): 0.820 ± 0.034 (42: 0.843, 43: 0.761, 44: 0.839, 45: 0.827, 46: 0.833). Vs decision
+swarm U = 19/25, p = 0.111 (better on 3 of 5 paired seeds); vs swarm_no_redteam U = 25/25,
+p = 0.004; vs sparse_baseline U = 6/25, p = 0.925 (lower mean only because of seed 43; sparse
+wins 19 of 25 pairs). The red team broke 30 of 66 rung-1 survivors (was every survivor in
+replication seed 51); 20 of 25 rounds produced a champion. All five champions stay below SST on
+convdiv (ratio 0.62–0.65). Seed 44's champion has extreme constants
+(`div(964.265, -63.2677 + I1) * T1 + 2.94592 * tanh(964.615 * I2) * T2`), effectively a constant
+T1 term plus a sign switch on T2. SAM, Analyst v3 and the threshold changed together, so the gain
+over the decision swarm arm cannot be attributed to one of them; one exploratory run among several.
