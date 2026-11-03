@@ -375,3 +375,72 @@ random_grammar 0.784 ± 0.055 beat both swarm arms on every pair (U = 0, exact o
 v3 red-team split (bumps h26/h38, convdiv Re 20580) the screen at ratio 1.0 removes candidates that
 score better on validation. Loop v1 does not use the wider data; the LLM proposer in this topology
 adds nothing measurable.
+
+**E4 result (2026-11-03, exploratory, frozen, `data=v3`, loop v2, $6.79, `runs/arms/e4-v2-s4*.json`),
+`worst_validation_ratio` on `curved_step`:** swarm 0.850 ± 0.105, swarm_no_redteam 0.869 ± 0.116; every
+seed has a champion. Vs loop v1 (E3, same data and seeds): swarm U = 20/25, exact one-sided p = 0.075;
+no-red-team U = 11/25, p = 0.655. Vs E2: sparse_baseline (0.748) U = 5/25, p = 0.952; random_grammar
+(0.784) U = 7/25 and 6/25. Seed 46 reached 0.694 (swarm) and 0.688 (no red team) with the same structure
+found independently, `0.26·T1 + (−7.4 + 7.3·tanh(12.4·I1))·T2 + 3.6·exp(−1.3·I1)·T3`, the lowest of
+any arm; the arms' means still trail sparse and random grammar.
+
+**Why loop v2 stalls after round 1 (event logs, all 10 sessions):** of the candidates proposed in
+rounds 2–5, 121 were `invalid` (round 1: 3), almost all over the 25-node cap (26–32 nodes): the
+Theorist extends population members that are already near the cap, and neither node counts nor the
+parser's message reach it (the Reviser sees only `status: invalid`). 147 more were non-realizable, and
+30 of 262 calls returned empty text (8192-token completion limit spent on reasoning; swarm seed 46 had
+no proposals in rounds 3–5). These are wiring defects of loop v2, not evidence about the topology.
+
+## 2026-11-03 — Loop v2.1 and E5 (registered before running)
+
+**Loop v2.1** (fixes for the E4 stall; topology unchanged): completion limit 50,000 tokens for the v2
+roles (probe: the API accepts it), up from the dispatcher's 8,192; an `invalid` candidate carries the
+parser's message (e.g. "Complexity 27 exceeds cap 25") to the Reviser and the rejected list; every
+candidate the LLM sees carries `nodes`, `realizable` and `realizable_fraction`, and every v2 context
+carries `max_nodes: 25`. Prompts `theorist_v2` and `reviser` v2 tell the model to replace rather than
+add terms near the cap and how to read the new fields.
+
+**E5:** loop v2.1, data v3, seeds 42–46, 5 rounds × 2 groups, swarm and swarm_no_redteam,
+`scratch/arms_seed.py <seed> e5-v21 v2 3.0` ($3.00 cap per seed = $15), outputs
+`runs/arms/e5-v21-s<seed>.json`; E4 sessions moved to `runs/_archive-e4-2026-11-03/` first.
+Compared with E4 (v2), E3 (v1), E2 sparse and random grammar on the same data and seeds; metric
+unchanged.
+
+
+## 2026-11-03 — Locked milestone 1 (option B), candidate set fixed before the vault is opened
+
+**Rule:** per approach, the champion with the lowest `curved_step` validation ratio among COMPLETED
+data-v3 runs (E2 sparse and random grammar, E3 loop v1, E4 loop v2; E5 excluded because it was still
+running), as trained; plus the same structure with constants refit on all non-locked data (train,
+validation, redteam, attack hills; 22 cases, 4000 points each, non-finite rows
+dropped as in `score_expression`); the sparse baseline refit on the same data with its picked seed;
+the constant form refit on all data; and the post-hoc data-v2 constant model as a reference.
+Picked: sparse_v3 (seed 43, curved_step 0.733), random_grammar_v3 (seed 43, curved_step 0.730), loop_v1_v3 (seed 46, curved_step 0.851), loop_v2_v3 (seed 46, curved_step 0.688). Built by `scratch/build_milestone.py`; files `runs/arms/milestone1-candidates.json`
+and `milestone1-meta.json`.
+
+**Evaluation:** ONE call, `scripts/evaluate_locked.py --milestone 1 --candidates-file
+runs/arms/milestone1-candidates.json` (one log line for the whole set). Metric: frozen a-priori
+error ratio on each locked case (same scorer as validation). Only `square_duct` is present on this
+machine; `nasa_wall_mounted_hump` is not ingested here. This machine's vault log shows 0 prior
+locked evaluations; the other machine's count was not available. `square_duct` is 3-D (secondary
+flow), where the 2-D-only exclusions of the grammar (T4, I3–I5) are a known limitation.
+
+**Candidates (10):**
+- `sparse_v3`: `3.765 * T3 + (-3.491) * tanh(I1) * T3 + 3.277 * tanh(I1) * T2 + (-2.974) * T2`
+- `random_grammar_v3`: `((-2.32717) * exp(-I1)) * T2 + ((-2.73102) * I2) * T1 + (div(3.43418, 0.879777 + I1)) * T3`
+- `loop_v1_v3`: `0.152437 * tanh(I1) * T1 + (-0.521252) * T2 + div(2.33143, 0.878462 + I1) * T3`
+- `loop_v2_v3`: `0.255839*T1 + ((-7.49174) + (+7.35441)*tanh(12.4939*I1))*T2 + (3.89159*exp((-1.5)*I1))*T3`
+- `constant_v2data_posthoc`: `0.333 * T1 + (-3.05432) * T2 + 1.5 * T3`
+- `random_grammar_v3_refit_all`: `((-3.05782) * exp(-I1)) * T2 + ((-2) * I2) * T1 + (div(3.5236, 1 + I1)) * T3`
+- `loop_v1_v3_refit_all`: `0.333 * tanh(I1) * T1 + (-1.5) * T2 + div(3.52784, 1 + I1) * T3`
+- `loop_v2_v3_refit_all`: `0.25459*T1 + ((-7.76313) + (+7.60746)*tanh(12.7347*I1))*T2 + (3.96842*exp((-1.46096)*I1))*T3`
+- `constant_refit_all`: `0.129433 * T1 + (-0.205567) * T2 + 0.242094 * T3`
+- `sparse_refit_all`: `3.638 * tanh(I1) * T2 + (-3.286) * T2 + 0.8313 * T3 + 0.2515 * T1`
+
+**Milestone 1 result (2026-11-03, locked, frozen a priori, `square_duct` only; vault log: evaluation 1
+of 3 on this machine):** loop_v2_v3 0.527 (refit on all data 0.520); constant_v2data_posthoc 0.610;
+sparse_v3 0.618 (refit 0.619); random_grammar_v3 0.658 (refit 0.607); loop_v1_v3 0.882 (refit 0.754);
+constant_refit_all 0.957. The validation ranking held on the locked case: loop v2's champion is best on
+both, loop v1's worst on both. One locked case, one champion per approach (best validation seed, the
+same rule for every approach), frozen a priori: not a flow-level claim and not a seed-averaged one
+(seed averages on validation: loop v2 0.850–0.869 vs sparse 0.748).

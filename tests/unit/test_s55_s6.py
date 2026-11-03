@@ -32,4 +32,7 @@ def test_api_routes_present() -> None:
     assert {"/health", "/api/session/state", "/api/matrix", "/ws/events"} <= paths
     assert health() == {"status": "ok"}
     assert session_state("default")["events_per_second"] == 20
-    assert len(matrix("default")["flows"]["generated"]) == 12
+    from flowforge.data.frozen_fields import redteam_case_ids
+
+    # the generator's 12-flow sweep plus the case registry's red-team split
+    assert len(matrix("default")["flows"]["generated"]) == 12 + len(redteam_case_ids())

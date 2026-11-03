@@ -1,5 +1,5 @@
 role: reviser
-version: 1
+version: 2
 model: muse-spark-1.3-contributor
 schema: CandidateProposal
 risk_audit: required
@@ -18,6 +18,11 @@ prompt: |
   - Fix what the scores show: drop a term that does not help, change the
     invariant dependence of the coefficient that is wrong on the worst flow,
     bound a term that made a candidate non-realizable.
+  - status "invalid" carries the parser's reason. "Complexity N exceeds cap
+    25" means remove N - 25 nodes: drop a term or replace tanh(a*x) by x.
+  - realizable_fraction < 1 is the share of training points with physically
+    possible stresses; close to 1 means a small bound or a smaller constant
+    fixes it, far from 1 means the form is wrong.
   - A fitted constant that ran to a huge value (> ~100) or a near-zero
     divisor is a sign the form is fighting the data: change the form.
   - Prefer the simpler expression when two score about the same.

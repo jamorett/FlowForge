@@ -1,5 +1,5 @@
 role: theorist_v2
-version: 1
+version: 2
 model: muse-spark-1.3-contributor
 schema: CandidateProposal
 risk_audit: required
@@ -28,7 +28,10 @@ prompt: |
     that difference.
   - diagnosis: the worst flows and one hypothesis. At least 2 of your 3
     candidates must test that hypothesis directly; the third may explore.
-  - rejected: never re-propose these.
+  - nodes: each population member's expression-tree node count; max_nodes is
+    the hard cap (25). A candidate over the cap is rejected before fitting. If
+    a member is near the cap, REPLACE a term instead of adding one.
+  - rejected: never re-propose these; each carries the reason it failed.
   - mechanism: your group's physical mechanism brief; tie each term to a
     named mechanism in `mechanisms`.
 

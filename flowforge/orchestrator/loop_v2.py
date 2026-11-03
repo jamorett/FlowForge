@@ -32,6 +32,7 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 POP_K = 8
+MAX_COMPLETION_TOKENS = 50_000  # v2.1: 8192 left 30/262 replies empty (reasoning ate the budget)
 PER_TENSOR_SET = 2  # diversity: at most this many per tensor signature before filling by rank
 ROUND_STEPS_V2 = ("diagnostician", "theorist", "score", "revise", "score_revised",
                   "population", "champion")
@@ -69,11 +70,17 @@ def evaluate(expr: str, train, train_ids: list[str], heldout_ids: list[str],
     fit = fit_expression(expr, inv, basis, target, snap=True, b_rans=b_rans)
     status = fit.get("status")
     if status in ("invalid", "fit_failed", "fit_rejected"):
-        return {"expression": expr, "status": status, "reason": fit.get("reason", status)}
+        reason = fit.get("reason", status)
+        if status == "invalid":  # the parser's own message (e.g. "Complexity 27 exceeds cap 25") for the LLM
+            try:
+                validate_candidate(expr)
+            except Exception as exc:
+                reason = str(exc)
+        return {"expression": expr, "status": status, "reason": reason}
     text = str(fit["expression"])
     try:
         nodes = complexity(validate_candidate(text))
-        realizable = bool(_realizability(candidate_anisotropy(text, inv, basis), b_rans)[0])
+        realizable, real_frac = _realizability(candidate_anisotropy(text, inv, basis), b_rans)
         train_ratio = float(score_expression(text, inv, basis, target)["ratio"])
     except (ValueError, KeyError, AssertionError, TypeError) as exc:
         return {"expression": expr, "status": "score_failed", "reason": str(exc)}
@@ -83,7 +90,8 @@ def evaluate(expr: str, train, train_ids: list[str], heldout_ids: list[str],
     held = {c: round(_ratio(text, c), 4) for c in heldout_ids}
     selection = max([train_ratio, *held.values()])
     return {"expression": text, "original": expr, "status": "ok", "nodes": nodes,
-            "realizable": realizable, "train_ratio": round(train_ratio, 4),
+            "realizable": bool(realizable), "realizable_fraction": round(float(real_frac), 4),
+            "train_ratio": round(train_ratio, 4),
             "train_cases": per_train, "heldout_cases": held,
             "selection": round(selection, 4) if np.isfinite(selection) else float("inf"),
             "broken": any(v > break_ratio for v in held.values())}
@@ -129,8 +137,8 @@ def pick_champion_v2(population: list[dict], redteam: bool) -> dict | None:
 
 def _brief(p: dict) -> dict:
     """What an LLM may see about a candidate: train and held-out scores, never validation."""
-    return {k: p[k] for k in ("expression", "selection", "broken", "train_ratio",
-                              "train_cases", "heldout_cases") if k in p}
+    return {k: p[k] for k in ("expression", "nodes", "selection", "broken", "realizable",
+                              "realizable_fraction", "train_ratio", "train_cases", "heldout_cases") if k in p}
 
 
 def _clean(value):
@@ -164,7 +172,8 @@ def _dispatch(role: str, runtime, context: dict):
     from flowforge.agents.runtime.client import BudgetExceededError
 
     try:
-        return dispatcher.dispatch_role(role, runtime, context)
+        return dispatcher.dispatch_role(role, runtime, {**context, "max_nodes": 25},
+                                        max_tokens=MAX_COMPLETION_TOKENS)
     except BudgetExceededError:
         raise
     except dispatcher.RoleDispatchError as exc:

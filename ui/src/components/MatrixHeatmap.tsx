@@ -69,11 +69,11 @@ export function MatrixHeatmap({ data }: { data: MatrixData }) {
         </div>
 
         <div className="glass-panel p-3 rounded-lg border-l-4 border-amber-500">
-          <div className="text-neutral-400 font-medium">Red Team Attacks (Validation)</div>
+          <div className="text-neutral-400 font-medium">Held-out flows (attack hills + red-team split)</div>
           <div className="text-amber-300 font-bold text-sm mt-0.5">
-            {data.flows.generated.length} attack flows
+            {data.flows.generated.length} held-out flows
           </div>
-          <div className="text-[11px] text-neutral-500 mt-1">Slopes [0.5–1.5], sweeps</div>
+          <div className="text-[11px] text-neutral-500 truncate mt-1">{data.flows.generated.map((g) => g.flow).join(", ")}</div>
         </div>
 
         <div className="glass-panel p-3 rounded-lg border-l-4 border-neutral-600">

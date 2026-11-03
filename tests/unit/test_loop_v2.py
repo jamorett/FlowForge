@@ -109,3 +109,22 @@ def test_population_diversity_and_champion_avoids_broken() -> None:
     assert pop[-1]["broken"]  # broken ranks last
     assert loop_v2.pick_champion_v2(pop, redteam=True)["expression"] == "1 * T1"
     assert loop_v2.pick_champion_v2([_cand("x * T1", 0.4, broken=True)], redteam=True) is not None
+
+
+def test_v21_reports_parser_reason_and_node_count(fake_world, monkeypatch) -> None:
+    import numpy as np
+
+    inv, basis, target = _fields(1)
+    train = (inv, basis, target, np.zeros_like(target))
+    over = " + ".join(f"0.1 * tanh(I1 + {i}) * T1" for i in range(6))  # well over 25 nodes
+    bad = loop_v2.evaluate(over, train, [], [], 1.0)
+    assert bad["status"] == "invalid" and "exceeds cap" in bad["reason"]
+    good = loop_v2.evaluate("0.1 * T1", train, [], [], 1.0)
+    assert good["nodes"] > 0 and 0.0 <= good["realizable_fraction"] <= 1.0
+
+    from flowforge.agents import dispatcher
+    seen = {}
+    monkeypatch.setattr(dispatcher, "dispatch_role",
+                        lambda role, rt, ctx=None, **kw: seen.update(kw, ctx=ctx) or None)
+    loop_v2._dispatch("reviser", None, {"x": 1})
+    assert seen["max_tokens"] == loop_v2.MAX_COMPLETION_TOKENS == 50_000 and seen["ctx"]["max_nodes"] == 25

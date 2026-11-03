@@ -140,3 +140,19 @@ def test_invalid_candidate_uses_no_evaluation(tmp_path: Path) -> None:
                            "--locked-root", str(tmp_path / "none"), "--log-file", str(log))
         assert result.returncode == 2
     assert not log.exists()
+
+
+def test_vault_endpoint_reports_logged_milestones_only(tmp_path, monkeypatch) -> None:
+    import flowforge.api.server as srv
+
+    monkeypatch.chdir(tmp_path)
+    assert srv.vault_log() == {"evaluations": [], "used": 0, "max": 3}
+    log = tmp_path / "runs" / "vault_access.log"
+    log.parent.mkdir()
+    scores = {"candidates": {"a": {"champion": "0.1 * T1", "cases": {"square_duct": {"error_ratio": 0.5}}}}}
+    log.write_text("DENIED role=coder path=data\locked\n"
+                   f"LOCKED_EVAL milestone=1 reason=m1 set mode=direct-set timestamp=2026-11-03T17:00:00+00:00 "
+                   f"scores={json.dumps(scores)}\n", encoding="utf-8")
+    v = srv.vault_log()
+    assert v["used"] == 1 and v["evaluations"][0]["reason"] == "m1 set"
+    assert v["evaluations"][0]["scores"]["candidates"]["a"]["cases"]["square_duct"]["error_ratio"] == 0.5

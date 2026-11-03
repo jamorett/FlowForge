@@ -35,8 +35,8 @@ const names = (xs: unknown): string[] =>
   Array.isArray(xs) ? xs.map((s) => (typeof s === "string" ? s : s?.expression)).filter((s): s is string => !!s) : [];
 
 /** Pure: raw events -> lab model. Rejections are inferred like history.py: present at rung k, absent at k+1. */
-export function deriveLab(events: Ev[]): Lab {
-  const loop: Loop = events.some((e) => e.loop === "v2") ? "v2" : "v1";
+export function deriveLab(events: Ev[], loopOf: Ev[] = events): Lab {
+  const loop: Loop = loopOf.some((e) => e.loop === "v2") ? "v2" : "v1";  // whole session, so Replay at event 0 knows
   const flow = flowOf(loop) as readonly string[];
   const lab: Lab = { events, rounds: [], candidates: [], champions: [], attacks: [], breaks: [], analyst: [], objections: [],
     tokens: 0, loop, population: [] };
@@ -156,7 +156,7 @@ export function useEvents() { return useContext(Ctx); }
 /** Lab model of the first `upto` events (Replay) or all of them (live). */
 export function useLab(upto?: number): Lab {
   const { events } = useEvents();
-  return useMemo(() => deriveLab(upto === undefined ? events : events.slice(0, upto)), [events, upto]);
+  return useMemo(() => deriveLab(upto === undefined ? events : events.slice(0, upto), events), [events, upto]);
 }
 
 export const prefersReducedMotion = () =>

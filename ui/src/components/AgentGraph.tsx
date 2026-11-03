@@ -59,7 +59,7 @@ function badgesV2(lab: Lab, round: number): Partial<Record<Role, string>> {
   const pop = lab.population.find((p) => p.round === round);
   const diag = lab.analyst.find((a) => a.round === round);
   return {
-    diagnostician: diag ? (diag.failure_regions[0] ?? "diagnosed") : "",
+    diagnostician: diag ? (diag.failure_regions.length ? `${diag.failure_regions.length} failure region(s)` : "diagnosed") : "",
     theorist: `${count("theorist", "expressions")} proposed`, score: `${usable(scored("score"))} usable`,
     revise: `${count("revise", "expressions")} revised`, score_revised: `${usable(scored("score_revised"))} usable`,
     population: pop ? `${pop.size} kept` : "",

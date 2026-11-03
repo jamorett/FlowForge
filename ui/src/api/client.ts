@@ -72,6 +72,12 @@ export async function fetchArms(): Promise<ArmsFile[]> {
   if (!r.ok) throw new Error(`arms ${r.status}`);
   return r.json();
 }
+export interface VaultEval { milestone: number; reason: string; mode: string; timestamp: string; scores: any }
+export async function fetchVault(): Promise<{ evaluations: VaultEval[]; used: number; max: number }> {
+  const r = await fetch(`${base}/api/vault`);
+  if (!r.ok) throw new Error(`vault ${r.status}`);
+  return r.json();
+}
 export function artifactUrl(session: string, imagePath: string): string {
   const name = imagePath.split(/[\\/]/).pop() ?? ""; // event paths use Windows separators
   return `${base}/api/artifact?session=${encodeURIComponent(session)}&name=${encodeURIComponent(name)}`;

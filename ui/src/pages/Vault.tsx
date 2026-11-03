@@ -1,6 +1,19 @@
+import { useQuery } from "@tanstack/react-query";
+import { fetchVault, type VaultEval } from "../api/client";
 import { StatusBadge } from "../components/StatusBadge";
 
+/** One candidate per row with its ratio on each locked case (direct-set) or the single champion (direct). */
+function rows(e: VaultEval): { name: string; expr: string; cases: Record<string, number> }[] {
+  const one = (name: string, r: any) => ({ name, expr: r?.champion ?? "", cases: Object.fromEntries(
+    Object.entries(r?.cases ?? {}).map(([c, m]: [string, any]) => [c, m?.error_ratio])) });
+  if (e.scores?.candidates) return Object.entries(e.scores.candidates).map(([n, r]) => one(n, r));
+  return e.scores?.cases ? [one("champion", e.scores)] : [];
+}
+
 export function Vault() {
+  const q = useQuery({ queryKey: ["vault"], queryFn: fetchVault, refetchInterval: 15000 });
+  const evals = q.data?.evaluations ?? [];
+  const scoredAt = (c: string) => evals.find((e) => rows(e).some((r) => c in r.cases))?.milestone;
   return (
     <section aria-label="Locked Test Vault" className="space-y-6">
       <div className="flex items-center justify-between">
@@ -43,7 +56,8 @@ export function Vault() {
           </p>
           <div className="pt-2 flex items-center gap-2 text-[11px] text-neutral-500">
             <span>Status:</span>
-            <span className="text-amber-400 font-medium">Greyed until Milestone 1</span>
+            <span className={scoredAt("square_duct") ? "text-emerald-400 font-medium" : "text-amber-400 font-medium"}>
+              {scoredAt("square_duct") ? `Scored at Milestone ${scoredAt("square_duct")}` : "Greyed until Milestone 1"}</span>
           </div>
         </div>
 
@@ -73,11 +87,35 @@ export function Vault() {
           <div className="text-emerald-400">
             [INIT] 2026-10-26T00:00:00Z - Split guard initialized: data/locked/ access restricted.
           </div>
-          <div className="text-neutral-500">
-            [LOG] No milestone evaluations executed yet. Budget remaining: 3 / 3 allowed evaluations.
-          </div>
+          {evals.length === 0 && <div className="text-neutral-500">[LOG] No milestone evaluations executed yet. Budget remaining: 3 / 3 allowed evaluations.</div>}
+          {evals.map((e, i) => (
+            <div key={i} className="text-neutral-300">[MILESTONE {e.milestone}] {e.timestamp} · {e.mode} · {e.reason}</div>
+          ))}
+          {evals.length > 0 && <div className="text-amber-300">[LOG] Budget used: {q.data!.used} / {q.data!.max} locked evaluations on this machine.</div>}
         </div>
       </div>
+
+      {evals.map((e, i) => (
+        <div key={i} className="glass-panel p-4 rounded-xl border border-emerald-500/20 space-y-2">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-emerald-300">
+            Milestone {e.milestone} · frozen a-priori error ratio (candidate ÷ SST; below 1 beats SST)
+          </h3>
+          <table className="w-full text-xs">
+            <thead><tr className="text-neutral-400 text-left">
+              <th className="py-1">candidate</th>
+              {Object.keys(rows(e)[0]?.cases ?? {}).map((c) => <th key={c} className="py-1">{c}</th>)}
+              <th className="py-1">expression</th></tr></thead>
+            <tbody>
+              {[...rows(e)].sort((a, b) => (Object.values(a.cases)[0] ?? 9) - (Object.values(b.cases)[0] ?? 9)).map((r) => (
+                <tr key={r.name} className="border-t border-white/5">
+                  <td className="py-1 font-mono text-cyan-300">{r.name}</td>
+                  {Object.values(r.cases).map((v, j) => <td key={j} className="py-1 font-mono text-emerald-300">{typeof v === "number" ? v.toFixed(3) : "—"}</td>)}
+                  <td className="py-1 font-mono text-neutral-400 text-[10px]">{r.expr}</td>
+                </tr>))}
+            </tbody>
+          </table>
+        </div>
+      ))}
     </section>
   );
 }

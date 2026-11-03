@@ -208,7 +208,7 @@ def matrix(session: str = "default") -> dict:
     the red-team sweep (validation only). Cells are filled from scored events
     in the session log when present; otherwise left empty (never invented).
     """
-    from flowforge.data.frozen_fields import attack_case_for
+    from flowforge.data.frozen_fields import attack_case_for, redteam_case_ids, train_case_ids
     from flowforge.redteam.generator import generate_attacks
 
     attacks = []
@@ -218,6 +218,8 @@ def matrix(session: str = "default") -> dict:
         attacks.append({"flow": case_id or f"{s.kind}_a{s.alpha}_re{int(s.reynolds)}",
                         "kind": s.kind, "alpha": s.alpha, "reynolds": s.reynolds,
                         "split": s.split})
+    attacks += [{"flow": cid, "kind": "redteam", "split": "redteam"}  # held-out flows of the case registry
+                for cid in redteam_case_ids() if cid not in {a["flow"] for a in attacks}]
     events = _read_events(session)
     # Candidates: scored cells first, then step-level proposals (theorist /
     # rung survivors / champion). Cells stay empty until scored
@@ -264,7 +266,7 @@ def matrix(session: str = "default") -> dict:
         "session": session,
         "candidates": candidates,
         "flows": {
-            "train": ["periodic_hill_re5600", "periodic_hill_alpha1p5_re5600"],
+            "train": train_case_ids(),
             "generated": attacks,
             "locked": ["square_duct", "nasa_wall_mounted_hump"],
         },
@@ -408,6 +410,24 @@ def arms_results() -> list[dict]:
                     row["dl"] = None
         out.append({"file": f.name, "modified": f.stat().st_mtime, **data})
     return out
+
+
+@app.get("/api/vault")
+def vault_log() -> dict:
+    """Milestone entries already written to runs/vault_access.log (never reads data/locked)."""
+    path = Path("runs") / "vault_access.log"
+    evals = []
+    for line in path.read_text(encoding="utf-8").splitlines() if path.is_file() else []:
+        m = re.match(r"^LOCKED_EVAL milestone=(\d+) reason=(.*) mode=(\S+) timestamp=(\S+) scores=(.*)$", line)
+        if not m:
+            continue
+        try:
+            scores = json.loads(m.group(5))
+        except ValueError:
+            scores = {}
+        evals.append({"milestone": int(m.group(1)), "reason": m.group(2), "mode": m.group(3),
+                      "timestamp": m.group(4), "scores": scores})
+    return {"evaluations": evals, "used": len(evals), "max": 3}
 
 
 _ARTIFACT = re.compile(r"^[A-Za-z0-9_.-]+\.png$")

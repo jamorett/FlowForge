@@ -22,15 +22,18 @@ const VIEWS = [
 type ViewId = (typeof VIEWS)[number]["id"];
 
 export function App() {
-  const [view, setView] = useState<ViewId>("Mission Control");
-  const [session, setSession] = useState("round-1");
+  // ?view=Results&session=arms-swarm-v2-s46 opens a given page and session (shareable links, screenshots)
+  const params = new URLSearchParams(window.location.search);
+  const urlView = VIEWS.find((v) => v.id === params.get("view"))?.id;
+  const [view, setView] = useState<ViewId>(urlView ?? "Mission Control");
+  const [session, setSession] = useState(params.get("session") ?? "round-1");
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
 
   // Offer the real sessions under runs/ (refreshed: a running experiment creates new ones); start on the newest.
   useEffect(() => {
     let first = true;
     const load = () => fetchSessions()
-      .then((list) => { setSessions(list); if (first && list.length) setSession(list[0].session); first = false; })
+      .then((list) => { setSessions(list); if (first && list.length && !params.get("session")) setSession(list[0].session); first = false; })
       .catch(() => setSessions([]));
     load();
     const t = setInterval(load, 10000);
