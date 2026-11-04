@@ -1,0 +1,1110 @@
+{
+  "label": "exploratory",
+  "mode": "frozen",
+  "tag": "v3long",
+  "rounds": 15,
+  "max_nodes": 40,
+  "dry": false,
+  "max_features": 10,
+  "seed_standard": false,
+  "seeds": {
+    "43": {
+      "champion_round": 12,
+      "features": [
+        [
+          "f_noneq",
+          "Pk / eps",
+          "Non-equilibrium production-to-dissipation ratio, large >1 in separated shear layers where SST anisotropy is wrong."
+        ],
+        [
+          "f_accel",
+          "DUDt_mag / (DUDt_mag + omega * sqrt(k) + Snorm * Umag)",
+          "Mean acceleration vs turbulence/shear scales to flag converging acceleration and curved decelerating non-equilibrium on worst heldout channel."
+        ],
+        [
+          "f_apg",
+          "UgradP / (eps + Umag * gradp_mag)",
+          "Signed APG work vs dissipation to separate APG separation (positive) from FPG acceleration/reattachment where SST error flips on worst channel and bumps."
+        ],
+        [
+          "f_kadv",
+          "UgradK / (eps + abs(UgradK))",
+          "Signed k-advection vs dissipation to mark non-local transport and reattachment recovery where local-equilibrium SST lags separated shear layer."
+        ],
+        [
+          "f_curve",
+          "DUDt_mag * d / (k + DUDt_mag * d + (omega * d)**2)",
+          "Wall-distance-weighted acceleration vs TKE to flag strong curvature and converging acceleration / diverging deceleration distinct from equilibrium shear."
+        ]
+      ],
+      "formula": "(0.2543)*T1 + ((-5)*exp((-5.244)*(f_accel - 0.1102)**2))*T2 + (4.248*exp((-13.51)*(f_noneq - 0.5)**2))*T3",
+      "nodes": 30,
+      "worst_heldout": 0.5239136166857137,
+      "curved_step": {
+        "curved_step": 0.6874023439432848
+      },
+      "llm_plus_standard": {
+        "formula": "(0.2682*exp((-9.96)*(q_ti - 0.005708)**2))*T1 + ((-5)*exp((-5.244)*(f_accel - 0.1102)**2))*T2 + (4.248*exp((-13.51)*(f_noneq - 0.5)**2))*T3",
+        "nodes": 40,
+        "curved_step": {
+          "curved_step": 0.6867355865268522
+        }
+      },
+      "history": [
+        {
+          "round": 1,
+          "features": [
+            [
+              "f_noneq",
+              "Pk / eps"
+            ],
+            [
+              "f_apg",
+              "UgradP * d / (k * Umag)"
+            ],
+            [
+              "f_accel",
+              "DUDt_mag / (omega * sqrt(k))"
+            ]
+          ],
+          "accepted": [
+            "f_noneq",
+            "f_apg",
+            "f_accel"
+          ],
+          "formula": "(0.2543)*T1 + ((-5.801)*exp((-348.8)*(I1 - 0.01348)**2))*T2 + (4.248*exp((-13.51)*(f_noneq - 0.5)**2))*T3",
+          "nodes": 30,
+          "train": 0.504788629924134,
+          "heldout": {
+            "converging_diverging_channel": 0.5440248387132134,
+            "bump_h26": 0.5015765796327734,
+            "bump_h38": 0.47926246257302973,
+            "converging_diverging_channel_re20580": 0.4342385119949535
+          },
+          "worst_heldout": 0.5440248387132134,
+          "gains": {
+            "f_noneq": 0.03324491901172577,
+            "f_apg": 0.0,
+            "f_accel": 0.0
+          },
+          "proposal": {
+            "risk_audit": "All three checked dimensionless under V->2V L->3L: Pk/eps=(L2/T3)/(L2/T3); UgradP*d/(k*Umag)=(L2/T3*L)/(L2/T2*L/T); DUDt/(omega*sqrt(k))=(L/T2)/((1/T)*(L/T)). Denominators k,eps,omega,Umag>0 at cell centers so finite; no exact zero-division expected, extremes squashed by median mapping. Pk/eps complements I1/I2 with production-dissipation imbalance, not just S/W magnitude; APG feature adds signed pressure-work vs advection absent in I1/I2; accel feature adds material acceleration vs turbulent scale, distinct from Snorm/Wnorm.",
+            "features": [
+              {
+                "name": "f_noneq",
+                "formula": "Pk / eps",
+                "rationale": "Non-equilibrium production-to-dissipation ratio, large >1 in separated shear layers where SST anisotropy is wrong."
+              },
+              {
+                "name": "f_apg",
+                "formula": "UgradP * d / (k * Umag)",
+                "rationale": "Signed adverse-pressure-gradient work vs turbulent advection, positive in APG separation upstream of reattachment."
+              },
+              {
+                "name": "f_accel",
+                "formula": "DUDt_mag / (omega * sqrt(k))",
+                "rationale": "Mean acceleration normalized by turbulent velocity/time scale, marks converging-diverging acceleration and bump-crest curvature."
+              }
+            ],
+            "drop": []
+          }
+        },
+        {
+          "round": 2,
+          "features": [
+            [
+              "f_noneq",
+              "Pk / eps"
+            ],
+            [
+              "f_wall",
+              "sqrt(k) / (omega * d)"
+            ],
+            [
+              "f_apg_eps",
+              "UgradP / (abs(Pk) + eps)"
+            ],
+            [
+              "f_accwall",
+              "DUDt_mag / (omega * omega * d)"
+            ]
+          ],
+          "accepted": [
+            "f_wall",
+            "f_apg_eps",
+            "f_accwall"
+          ],
+          "formula": "(0.4808*f_wall)*T1 + ((-5.801)*exp((-348.8)*(I1 - 0.01348)**2))*T2 + (4.248*exp((-13.51)*(f_noneq - 0.5)**2))*T3",
+          "nodes": 31,
+          "train": 0.5041446090484275,
+          "heldout": {
+            "converging_diverging_channel": 0.5513213457319315,
+            "bump_h26": 0.49875548222937643,
+            "bump_h38": 0.4739364354219531,
+            "converging_diverging_channel_re20580": 0.43690682107862544
+          },
+          "worst_heldout": 0.5513213457319315,
+          "gains": {
+            "f_noneq": 0.04860635880467978,
+            "f_wall": -0.00045442288697916666,
+            "f_apg_eps": 0.0,
+            "f_accwall": 0.0
+          },
+          "proposal": {
+            "risk_audit": "Checked dimensionless under V*2 L*3 scaling; denominators omega*d>0, abs(Pk)+eps>0, omega*omega*d>0 so finite except possible wall 0/0 <1%; none is function of I1/I2 alone; dropping zero-gain f_apg,f_accel avoids collinearity with improved replacements while retaining useful f_noneq; median scaling handles large near-wall magnitudes; overfit risk low with wall/APG/acceleration sensors targeting worst heldout converging_diverging_channel.",
+            "features": [
+              {
+                "name": "f_wall",
+                "formula": "sqrt(k) / (omega * d)",
+                "rationale": "Turbulent length sqrt(k)/omega vs wall distance; separates near-wall attached layer from free separated shear where SST anisotropy fails."
+              },
+              {
+                "name": "f_apg_eps",
+                "formula": "UgradP / (abs(Pk) + eps)",
+                "rationale": "Signed pressure work vs turbulence budget; positive in APG deceleration upstream of separation and negative in FPG acceleration."
+              },
+              {
+                "name": "f_accwall",
+                "formula": "DUDt_mag / (omega * omega * d)",
+                "rationale": "Mean acceleration vs turbulent-wall scale; marks bump-crest curvature, converging acceleration and diverging deceleration."
+              }
+            ],
+            "drop": [
+              "f_apg",
+              "f_accel"
+            ]
+          }
+        },
+        {
+          "round": 3,
+          "features": [
+            [
+              "f_noneq",
+              "Pk / eps"
+            ],
+            [
+              "f_wall",
+              "sqrt(k) / (omega * d)"
+            ],
+            [
+              "f_pwork",
+              "UgradP / eps"
+            ],
+            [
+              "f_curv",
+              "(Wnorm - Snorm) / (Wnorm + Snorm + omega)"
+            ],
+            [
+              "f_kadv",
+              "UgradK / (abs(Pk) + eps)"
+            ]
+          ],
+          "accepted": [
+            "f_pwork",
+            "f_curv",
+            "f_kadv"
+          ],
+          "formula": "(0.4808*f_wall)*T1 + ((-5.801)*exp((-348.8)*(I1 - 0.01348)**2))*T2 + (4.248*exp((-13.51)*(f_noneq - 0.5)**2))*T3",
+          "nodes": 31,
+          "train": 0.5041446090484275,
+          "heldout": {
+            "converging_diverging_channel": 0.5513213457319315,
+            "bump_h26": 0.49875548222937643,
+            "bump_h38": 0.4739364354219531,
+            "converging_diverging_channel_re20580": 0.43690682107862544
+          },
+          "worst_heldout": 0.5513213457319315,
+          "gains": {
+            "f_noneq": 0.04860635880467978,
+            "f_wall": -0.00045442288697916666,
+            "f_pwork": 0.0,
+            "f_curv": 0.0,
+            "f_kadv": 0.0
+          },
+          "proposal": {
+            "risk_audit": "All proposed ratios checked dimensionless: UgradP/eps and UgradK/(abs(Pk)+eps) are (L2/T3)/(L2/T3), (Wnorm-Snorm)/(Wnorm+Snorm+omega) is (1/T)/(1/T). Finite: eps>0 on >=99% like accepted f_noneq so first is finite, third denominator abs(Pk)+eps>0 even safer, second denominator W+S+omega>0 as omega>0 so never singular and bounded in [-1,1]. Not constant, ordering matters after median scaling. Redundancy risk: f_pwork shares eps with f_noneq but signed APG vs magnitude non-equilibrium so complementary; f_curv overlaps I1/I2 but omega-regularized bounded form targets recirculation vs attached shear without singularity; f_kadv overlaps non-equilibrium but adds advection/history vs local budget. Overfit risk low: simple algebraic forms, no exp/log singularities, no Umag/d denominators that blow up at wall. Drop only f_apg_eps and f_accwall (0 terms, 0 gain); retain f_wall despite -0.0005 gain because terms_using=1 and gain is noise-level, dropping would destroy current best.",
+            "features": [
+              {
+                "name": "f_pwork",
+                "formula": "UgradP / eps",
+                "rationale": "Signed pressure work vs dissipation; positive in APG deceleration upstream of separation, negative in FPG acceleration over bump crest."
+              },
+              {
+                "name": "f_curv",
+                "formula": "(Wnorm - Snorm) / (Wnorm + Snorm + omega)",
+                "rationale": "Rotation vs strain fraction; positive in recirculating/curved separation bubble, negative in attached shear where linear SST fails."
+              },
+              {
+                "name": "f_kadv",
+                "formula": "UgradK / (abs(Pk) + eps)",
+                "rationale": "Advection of k vs local budget; marks non-equilibrium transport/history in separated shear layer and reattachment."
+              }
+            ],
+            "drop": [
+              "f_apg_eps",
+              "f_accwall"
+            ]
+          }
+        },
+        {
+          "round": 4,
+          "features": [
+            [
+              "f_noneq",
+              "Pk / eps"
+            ],
+            [
+              "f_sstar",
+              "Snorm * k / eps"
+            ],
+            [
+              "f_qnorm",
+              "(Wnorm*Wnorm - Snorm*Snorm) / (Wnorm*Wnorm + Snorm*Snorm + omega*omega)"
+            ],
+            [
+              "f_acct",
+              "DUDt_mag * sqrt(k) / (abs(Pk) + eps)"
+            ]
+          ],
+          "accepted": [
+            "f_sstar",
+            "f_qnorm",
+            "f_acct"
+          ],
+          "formula": "(0.2543)*T1 + ((-5.801)*exp((-348.8)*(I1 - 0.01348)**2))*T2 + (4.248*exp((-13.51)*(f_noneq - 0.5)**2))*T3",
+          "nodes": 30,
+          "train": 0.504788629924134,
+          "heldout": {
+            "converging_diverging_channel": 0.5440248387132134,
+            "bump_h26": 0.5015765796327734,
+            "bump_h38": 0.47926246257302973,
+            "converging_diverging_channel_re20580": 0.4342385119949535
+          },
+          "worst_heldout": 0.5440248387132134,
+          "gains": {
+            "f_noneq": 0.002590461809593103,
+            "f_sstar": 0.0,
+            "f_qnorm": 0.0,
+            "f_acct": 0.0
+          },
+          "proposal": {
+            "risk_audit": "All three are dimensionless (S*k/eps; Q with 1/T^2 over 1/T^2; DUDt*sqrt(k) L2/T3 over Pk/eps L2/T3), finite 100% via eps>0 and omega>0 denominators with no d/Umag/k division, distinct ordering from f_noneq; risk is S* correlates with Pk/eps in eddy-viscosity regions but adds strain-only info where tau misaligned.",
+            "features": [
+              {
+                "name": "f_sstar",
+                "formula": "Snorm * k / eps",
+                "rationale": "Shear parameter turbulent time k/eps vs mean shear 1/Snorm; large in APG/separation onset and stagnation where SST overproduces."
+              },
+              {
+                "name": "f_qnorm",
+                "formula": "(Wnorm*Wnorm - Snorm*Snorm) / (Wnorm*Wnorm + Snorm*Snorm + omega*omega)",
+                "rationale": "Normalized Q rotation vs strain; positive in recirculation/curvature bubble core, negative in attached shear."
+              },
+              {
+                "name": "f_acct",
+                "formula": "DUDt_mag * sqrt(k) / (abs(Pk) + eps)",
+                "rationale": "Mean acceleration work vs turbulence budget; marks strong FPG acceleration over bump crest and APG deceleration where history matters."
+              }
+            ],
+            "drop": [
+              "f_wall",
+              "f_pwork",
+              "f_curv",
+              "f_kadv"
+            ]
+          }
+        },
+        {
+          "round": 5,
+          "features": [
+            [
+              "f_noneq",
+              "Pk / eps"
+            ],
+            [
+              "f_apg",
+              "UgradP / (abs(Pk) + eps)"
+            ],
+            [
+              "f_wall",
+              "sqrt(k) / (omega * d + sqrt(k))"
+            ],
+            [
+              "f_advk",
+              "UgradK / (abs(Pk) + eps)"
+            ]
+          ],
+          "accepted": [
+            "f_apg",
+            "f_wall",
+            "f_advk"
+          ],
+          "formula": "(0.4871*f_wall)*T1 + ((-5.801)*exp((-348.8)*(I1 - 0.01348)**2))*T2 + (4.248*exp((-13.51)*(f_noneq - 0.5)**2))*T3",
+          "nodes": 31,
+          "train": 0.5041259617034544,
+          "heldout": {
+            "converging_diverging_channel": 0.5505422833561013,
+            "bump_h26": 0.4990537423886851,
+            "bump_h38": 0.4744246268878622,
+            "converging_diverging_channel_re20580": 0.43657227368090634
+          },
+          "worst_heldout": 0.5505422833561013,
+          "gains": {
+            "f_noneq": 0.04867267860521546,
+            "f_apg": 0.0,
+            "f_wall": -0.0003726333498962897,
+            "f_advk": 0.0
+          },
+          "proposal": {
+            "risk_audit": "All 3 dimensionless verified (L-T scaling 2x-U/3x-L invariant); denominators abs(Pk)+eps>0 and omega*d+sqrt(k)>0 interior so finite on >99%; orderings distinct from f_noneq/I1/I2 (APG sign, wall vs free shear, k-advection history); f_apg/f_advk share denominator but numerators UgradP vs UgradK uncorrelated (pressure vs turbulence transport); wall feature bounded [0,1]; drop 3 unused gain<=0 to avoid slot blocking, no loss as terms_using=0.",
+            "features": [
+              {
+                "name": "f_apg",
+                "formula": "UgradP / (abs(Pk) + eps)",
+                "rationale": "Signed APG work vs turbulence budget; >0 adverse deceleration upstream of separation, <0 FPG acceleration over bump crest."
+              },
+              {
+                "name": "f_wall",
+                "formula": "sqrt(k) / (omega * d + sqrt(k))",
+                "rationale": "Turbulent length sqrt(k)/omega vs wall distance d; small near-wall attached layer, large in separated free shear to gate correction."
+              },
+              {
+                "name": "f_advk",
+                "formula": "UgradK / (abs(Pk) + eps)",
+                "rationale": "Streamwise advection of k vs local budget; marks non-local history and reattachment where transported k dominates production."
+              }
+            ],
+            "drop": [
+              "f_sstar",
+              "f_qnorm",
+              "f_acct"
+            ]
+          }
+        },
+        {
+          "round": 6,
+          "features": [
+            [
+              "f_noneq",
+              "Pk / eps"
+            ],
+            [
+              "f_wall",
+              "sqrt(k) / (omega * d + sqrt(k))"
+            ],
+            [
+              "f_align",
+              "UgradP / (gradp_mag * Umag + abs(Pk) + eps)"
+            ],
+            [
+              "f_accel",
+              "DUDt_mag * sqrt(k) / (abs(Pk) + eps)"
+            ],
+            [
+              "f_shear",
+              "Snorm * k / (abs(Pk) + eps)"
+            ]
+          ],
+          "accepted": [
+            "f_align",
+            "f_accel",
+            "f_shear"
+          ],
+          "formula": "(0.4871*f_wall)*T1 + ((-5.801)*exp((-348.8)*(I1 - 0.01348)**2))*T2 + (4.248*exp((-13.51)*(f_noneq - 0.5)**2))*T3",
+          "nodes": 31,
+          "train": 0.5041259617034544,
+          "heldout": {
+            "converging_diverging_channel": 0.5505422833561013,
+            "bump_h26": 0.4990537423886851,
+            "bump_h38": 0.4744246268878622,
+            "converging_diverging_channel_re20580": 0.43657227368090634
+          },
+          "worst_heldout": 0.5505422833561013,
+          "gains": {
+            "f_noneq": 0.0032106683278833037,
+            "f_wall": -0.0010494224585116396,
+            "f_align": 0.0,
+            "f_accel": 0.0,
+            "f_shear": 0.0
+          },
+          "proposal": {
+            "risk_audit": "All formulas unit-checked L-T: UgradP, gradp*Umag, Pk, eps all L2/T3; DUDt*sqrt(k) and Snorm*k also L2/T3, so dimensionless. Denominators contain eps>0 so >0 everywhere, finite; no Umag or k alone in denominator to avoid wall 0/0. f_align adds directional APG/FPG info missing from magnitude-only f_apg; f_accel targets bump-crest acceleration; f_shear separates strong-shear/weak-production zones from f_noneq equilibrium ratio. Drop f_apg,f_advk (0 terms, 0 gain, redundant); retain f_wall despite -0.0004 (in best T1 term, noise-level, keeps wall gating until replacement proven) to avoid churn.",
+            "features": [
+              {
+                "name": "f_align",
+                "formula": "UgradP / (gradp_mag * Umag + abs(Pk) + eps)",
+                "rationale": "Signed flow-pressure alignment (+1 adverse, -1 favorable) damped by turbulence; separates APG separation from FPG reacceleration in CDC/bumps."
+              },
+              {
+                "name": "f_accel",
+                "formula": "DUDt_mag * sqrt(k) / (abs(Pk) + eps)",
+                "rationale": "Mean acceleration vs turbulence budget; marks bump-crest curvature/acceleration where equilibrium SST lags."
+              },
+              {
+                "name": "f_shear",
+                "formula": "Snorm * k / (abs(Pk) + eps)",
+                "rationale": "Shear energy scale vs realized production/dissipation; large where strong shear yields weak production (separation/reattachment misalignment)."
+              }
+            ],
+            "drop": [
+              "f_apg",
+              "f_advk"
+            ]
+          }
+        },
+        {
+          "round": 7,
+          "features": [
+            [
+              "f_noneq",
+              "Pk / eps"
+            ],
+            [
+              "f_wall",
+              "sqrt(k) / (omega * d + sqrt(k))"
+            ],
+            [
+              "f_curv",
+              "(Wnorm - Snorm) / (Snorm + Wnorm + omega)"
+            ],
+            [
+              "f_pgrad",
+              "gradp_mag / (gradp_mag + DUDt_mag + omega * (Umag + sqrt(k)))"
+            ],
+            [
+              "f_trans",
+              "UgradK / (abs(Pk) + eps)"
+            ]
+          ],
+          "accepted": [
+            "f_curv",
+            "f_pgrad",
+            "f_trans"
+          ],
+          "formula": "(0.4871*f_wall)*T1 + ((-5.801)*exp((-348.8)*(I1 - 0.01348)**2))*T2 + (4.248*exp((-13.51)*(f_noneq - 0.5)**2))*T3",
+          "nodes": 31,
+          "train": 0.5041259617034544,
+          "heldout": {
+            "converging_diverging_channel": 0.5505422833561013,
+            "bump_h26": 0.4990537423886851,
+            "bump_h38": 0.4744246268878622,
+            "converging_diverging_channel_re20580": 0.43657227368090634
+          },
+          "worst_heldout": 0.5505422833561013,
+          "gains": {
+            "f_noneq": 0.04867267860521546,
+            "f_wall": -0.0003726333498962897,
+            "f_curv": 0.0,
+            "f_pgrad": 0.0,
+            "f_trans": 0.0
+          },
+          "proposal": {
+            "risk_audit": "All 3 dimensionless (1/T over 1/T; L/T2 over L/T2; L2/T3 over L2/T3) so invariant to Vx2 Lx3. Finite: f_curv denom Snorm+Wnorm+omega>0 always; f_pgrad denom gradp+DUDt+omega*(Umag+sqrt(k))>0 except triple-zero (<1%); f_trans denom abs(Pk)+eps>0 as eps>0. Bounded f_curv in [-1,1], f_pgrad in [0,1] limits outliers; f_trans unbounded signed but median-scaled. Overlap with I1/I2 (Snorm,Wnorm) is intentional as gating not replacement; complements retained f_noneq. Retain f_wall despite -0.001 gain because terms_using=1 and near-wall gating physically needed; drop 3 unused zero-gain features to reduce search space.",
+            "features": [
+              {
+                "name": "f_curv",
+                "formula": "(Wnorm - Snorm) / (Snorm + Wnorm + omega)",
+                "rationale": "Rotation-vs-strain imbalance for curvature and recirculation core (+1) vs attached strain-dominated shear (-1) to gate separation."
+              },
+              {
+                "name": "f_pgrad",
+                "formula": "gradp_mag / (gradp_mag + DUDt_mag + omega * (Umag + sqrt(k)))",
+                "rationale": "Pressure-force dominance over inertia and turbulence; ~1 in APG deceleration before separation, ~0 in FPG bump-crest acceleration."
+              },
+              {
+                "name": "f_trans",
+                "formula": "UgradK / (abs(Pk) + eps)",
+                "rationale": "Signed turbulent convection vs production-dissipation for non-local transport in growing separated shear layer and reattachment recovery."
+              }
+            ],
+            "drop": [
+              "f_align",
+              "f_accel",
+              "f_shear"
+            ]
+          }
+        },
+        {
+          "round": 8,
+          "features": [
+            [
+              "f_noneq",
+              "Pk / eps"
+            ],
+            [
+              "f_apg",
+              "UgradP / (abs(UgradP) + omega * k + eps)"
+            ],
+            [
+              "f_aniso",
+              "tau_dev / (tau_dev + k)"
+            ],
+            [
+              "f_eddy",
+              "nut * omega / (nut * omega + k)"
+            ]
+          ],
+          "accepted": [
+            "f_apg",
+            "f_aniso",
+            "f_eddy"
+          ],
+          "formula": "(0.2543)*T1 + ((-5.801)*exp((-348.8)*(I1 - 0.01348)**2))*T2 + (4.248*exp((-13.51)*(f_noneq - 0.5)**2))*T3",
+          "nodes": 30,
+          "train": 0.504788629924134,
+          "heldout": {
+            "converging_diverging_channel": 0.5440248387132134,
+            "bump_h26": 0.5015765796327734,
+            "bump_h38": 0.47926246257302973,
+            "converging_diverging_channel_re20580": 0.4342385119949535
+          },
+          "worst_heldout": 0.5440248387132134,
+          "gains": {
+            "f_noneq": -0.01719921224472637,
+            "f_apg": 0.0,
+            "f_aniso": 0.0,
+            "f_eddy": 0.0
+          },
+          "proposal": {
+            "risk_audit": "All 3 are dimensionless under V->2V L->3L (a^3/b over a^3/b; a^2 over a^2), bounded 0-1 or -1-1 with strictly positive denominators (omega*k+eps, tau_dev+k, nut*omega+k) for >99% finite; ordering differs from f_noneq (signed APG, anisotropy level, wall-damping) so low collinearity; dropping f_wall/f_curv/f_pgrad/f_trans with gain<=0 frees search and removes unused wall gate.",
+            "features": [
+              {
+                "name": "f_apg",
+                "formula": "UgradP / (abs(UgradP) + omega * k + eps)",
+                "rationale": "Signed APG (>0 deceleration before separation) vs FPG (<0 bump-crest acceleration) fraction to gate where SST fails in diffuser/bump."
+              },
+              {
+                "name": "f_aniso",
+                "formula": "tau_dev / (tau_dev + k)",
+                "rationale": "Baseline anisotropy magnitude fraction to locate high-shear separated layer vs weak-shear freestream where stress shape error is large."
+              },
+              {
+                "name": "f_eddy",
+                "formula": "nut * omega / (nut * omega + k)",
+                "rationale": "Eddy-viscosity damping ratio; small near-wall attached, ~0.5 in free-shear equilibrium to replace f_wall for near-wall vs separated shear gating."
+              }
+            ],
+            "drop": [
+              "f_wall",
+              "f_curv",
+              "f_pgrad",
+              "f_trans"
+            ]
+          }
+        },
+        {
+          "round": 9,
+          "features": [
+            [
+              "f_noneq",
+              "Pk / eps"
+            ],
+            [
+              "f_adv",
+              "UgradK / (abs(UgradK) + omega * k + eps)"
+            ],
+            [
+              "f_acc",
+              "DUDt_mag * Umag / (DUDt_mag * Umag + omega * k + eps)"
+            ],
+            [
+              "f_curv",
+              "(Wnorm - Snorm) * k / (abs(Wnorm - Snorm) * k + omega * k + eps)"
+            ]
+          ],
+          "accepted": [
+            "f_adv",
+            "f_acc",
+            "f_curv"
+          ],
+          "formula": "(0.2543)*T1 + ((-5.801)*exp((-348.8)*(I1 - 0.01348)**2))*T2 + (4.248*exp((-13.51)*(f_noneq - 0.5)**2))*T3",
+          "nodes": 30,
+          "train": 0.504788629924134,
+          "heldout": {
+            "converging_diverging_channel": 0.5440248387132134,
+            "bump_h26": 0.5015765796327734,
+            "bump_h38": 0.47926246257302973,
+            "converging_diverging_channel_re20580": 0.4342385119949535
+          },
+          "worst_heldout": 0.5440248387132134,
+          "gains": {
+            "f_noneq": 0.03392998859436114,
+            "f_adv": 0.0,
+            "f_acc": 0.0,
+            "f_curv": 0.0
+          },
+          "proposal": {
+            "risk_audit": "All 3 use N/(|N|+omega*k+eps) pattern proven finite by f_apg: numerator and scale share L2/T3 so dimensionless, denominator >0 interior (omega*k+eps>0) giving bounded [-1,1]/[0,1] and <1% NaN; wall 0/0 only at d=0 faces excluded from cells; ordering orthogonal to I1/I2 and f_noneq (advection vs Pk/eps, acceleration power vs APG, rotation-strain vs magnitude) limiting multicollinearity; drop 3 zero-use gain=0 features to free slots while keeping f_noneq despite -0.0172 as active term within noise.",
+            "features": [
+              {
+                "name": "f_adv",
+                "formula": "UgradK / (abs(UgradK) + omega * k + eps)",
+                "rationale": "Signed k-advection vs dissipation to mark separation-bubble entrainment and reattachment where transport dominates SST equilibrium."
+              },
+              {
+                "name": "f_acc",
+                "formula": "DUDt_mag * Umag / (DUDt_mag * Umag + omega * k + eps)",
+                "rationale": "Mean acceleration/curvature power vs turbulence scale, large at bump-crest FPG and curved separated shear where SST anisotropy fails."
+              },
+              {
+                "name": "f_curv",
+                "formula": "(Wnorm - Snorm) * k / (abs(Wnorm - Snorm) * k + omega * k + eps)",
+                "rationale": "Rotation- vs strain-dominated signed fraction to separate curved vortical separation from attached strain-dominated boundary layer."
+              }
+            ],
+            "drop": [
+              "f_apg",
+              "f_aniso",
+              "f_eddy"
+            ]
+          }
+        },
+        {
+          "round": 10,
+          "features": [
+            [
+              "f_noneq",
+              "Pk / eps"
+            ],
+            [
+              "f_apg",
+              "UgradP / (abs(UgradP) + omega * k + eps)"
+            ],
+            [
+              "f_wall",
+              "sqrt(k) / (omega * d + sqrt(k))"
+            ],
+            [
+              "f_rot",
+              "(Wnorm - Snorm) / (Wnorm + Snorm + omega)"
+            ]
+          ],
+          "accepted": [
+            "f_apg",
+            "f_wall",
+            "f_rot"
+          ],
+          "formula": "(0.4871*f_wall)*T1 + ((-5.801)*exp((-348.8)*(I1 - 0.01348)**2))*T2 + (4.248*exp((-13.51)*(f_noneq - 0.5)**2))*T3",
+          "nodes": 31,
+          "train": 0.5041259617034544,
+          "heldout": {
+            "converging_diverging_channel": 0.5505422833561013,
+            "bump_h26": 0.4990537423886851,
+            "bump_h38": 0.4744246268878622,
+            "converging_diverging_channel_re20580": 0.43657227368090634
+          },
+          "worst_heldout": 0.5505422833561013,
+          "gains": {
+            "f_noneq": 0.04867267860521546,
+            "f_apg": 0.0,
+            "f_wall": -0.0003726333498962897,
+            "f_rot": 0.0
+          },
+          "proposal": {
+            "risk_audit": "All dimensionless under V->2V L->3L (UgradP~8/3 vs omega*k~8/3; sqrt(k)~2 vs omega*d~2; W,S,omega~2/3). Bounded [-1,1]/[0,1] so median scaling preserves ordering. Finite: f_wall and f_rot denominators contain omega>0 so 100% finite; f_apg 0/0 only at wall cells like accepted f_adv pattern so >99% finite. f_apg complements f_noneq (pressure work vs production), f_wall adds wall-distance absent in I1/I2/f_noneq, f_rot is undamped kinematic version of f_curv avoiding omega*k+eps dilution and complementing I1/I2 magnitudes. Dropping zero-gain f_adv,f_acc,f_curv to free search.",
+            "features": [
+              {
+                "name": "f_apg",
+                "formula": "UgradP / (abs(UgradP) + omega * k + eps)",
+                "rationale": "Signed APG power vs turbulence scale to locate APG separation and FPG reacceleration where SST anisotropy fails."
+              },
+              {
+                "name": "f_wall",
+                "formula": "sqrt(k) / (omega * d + sqrt(k))",
+                "rationale": "Wall-proximity turbulence ratio to separate near-wall attached layer from detached free shear where correction differs."
+              },
+              {
+                "name": "f_rot",
+                "formula": "(Wnorm - Snorm) / (Wnorm + Snorm + omega)",
+                "rationale": "Rotation-minus-strain fraction to mark curved vortical separation and shear-layer curvature on bump lee and diffuser."
+              }
+            ],
+            "drop": [
+              "f_adv",
+              "f_acc",
+              "f_curv"
+            ]
+          }
+        },
+        {
+          "round": 11,
+          "features": [
+            [
+              "f_noneq",
+              "Pk / eps"
+            ],
+            [
+              "f_wall",
+              "sqrt(k) / (omega * d + sqrt(k))"
+            ],
+            [
+              "f_pgrad",
+              "gradp_mag / (gradp_mag + omega * sqrt(k))"
+            ],
+            [
+              "f_accel",
+              "DUDt_mag / (DUDt_mag + omega * sqrt(k) + Snorm * Umag)"
+            ],
+            [
+              "f_stress",
+              "tau_dev / (tau_dev + Snorm * nut + eps / omega)"
+            ]
+          ],
+          "accepted": [
+            "f_pgrad",
+            "f_accel",
+            "f_stress"
+          ],
+          "formula": "(0.4871*f_wall)*T1 + ((-5)*exp((-5.244)*(f_accel - 0.1102)**2))*T2 + (4.248*exp((-13.51)*(f_noneq - 0.5)**2))*T3",
+          "nodes": 31,
+          "train": 0.4950312101601631,
+          "heldout": {
+            "converging_diverging_channel": 0.5304310613286015,
+            "bump_h26": 0.4833686531655244,
+            "bump_h38": 0.45351567630308837,
+            "converging_diverging_channel_re20580": 0.4199255362506062
+          },
+          "worst_heldout": 0.5304310613286015,
+          "gains": {
+            "f_noneq": 0.048672678605215514,
+            "f_wall": -0.0003726333498963452,
+            "f_pgrad": 0.0,
+            "f_accel": 0.018337999816433637,
+            "f_stress": 0.0
+          },
+          "proposal": {
+            "risk_audit": "All 3 are dimensionless (L-T checked: gradp,DUDt,omega*sqrt(k),Snorm*Umag are [1,-2]; tau_dev,Snorm*nut,eps/omega are [2,-2]) and bounded in [0,1] with strictly-positive denominators (omega>0, eps/omega>0) for >=99% finite; distinct from f_noneq/f_wall (PG magnitude, Lagrangian acceleration, Boussinesq-failure ratio vs Pk/eps and wall proximity); keep f_wall despite -0.0004 as noise with structural T1 role, drop zero-use f_apg/f_rot; overfit risk low due to monotonic bounded forms, median normalization makes scale irrelevant.",
+            "features": [
+              {
+                "name": "f_pgrad",
+                "formula": "gradp_mag / (gradp_mag + omega * sqrt(k))",
+                "rationale": "Pressure-gradient magnitude vs turbulence scale to locate APG separation and FPG reattachment in diffuser and bumps where SST fails."
+              },
+              {
+                "name": "f_accel",
+                "formula": "DUDt_mag / (DUDt_mag + omega * sqrt(k) + Snorm * Umag)",
+                "rationale": "Mean acceleration vs turbulence/shear scales to flag converging acceleration and curved decelerating non-equilibrium on worst heldout channel."
+              },
+              {
+                "name": "f_stress",
+                "formula": "tau_dev / (tau_dev + Snorm * nut + eps / omega)",
+                "rationale": "Baseline anisotropy vs eddy-viscosity stress to mark where Boussinesq fails in curved/separated shear needing T2/T3 correction."
+              }
+            ],
+            "drop": [
+              "f_apg",
+              "f_rot"
+            ]
+          }
+        },
+        {
+          "round": 12,
+          "features": [
+            [
+              "f_noneq",
+              "Pk / eps"
+            ],
+            [
+              "f_accel",
+              "DUDt_mag / (DUDt_mag + omega * sqrt(k) + Snorm * Umag)"
+            ],
+            [
+              "f_apg",
+              "UgradP / (eps + Umag * gradp_mag)"
+            ],
+            [
+              "f_kadv",
+              "UgradK / (eps + abs(UgradK))"
+            ],
+            [
+              "f_curve",
+              "DUDt_mag * d / (k + DUDt_mag * d + (omega * d)**2)"
+            ]
+          ],
+          "accepted": [
+            "f_apg",
+            "f_kadv",
+            "f_curve"
+          ],
+          "formula": "(0.2543)*T1 + ((-5)*exp((-5.244)*(f_accel - 0.1102)**2))*T2 + (4.248*exp((-13.51)*(f_noneq - 0.5)**2))*T3",
+          "nodes": 30,
+          "train": 0.4956938783808427,
+          "heldout": {
+            "converging_diverging_channel": 0.5239136166857137,
+            "bump_h26": 0.4858914904096126,
+            "bump_h38": 0.4583535119882559,
+            "converging_diverging_channel_re20580": 0.41759177456465313
+          },
+          "worst_heldout": 0.5239136166857137,
+          "gains": {
+            "f_noneq": 0.047262938964480083,
+            "f_accel": 0.018337999816433692,
+            "f_apg": 0.0,
+            "f_kadv": 0.0,
+            "f_curve": 0.0
+          },
+          "proposal": {
+            "risk_audit": "All formulas dimensionless (L-T checked: UgradP,eps,Umag*gradp_mag all L2/T3; UgradK same; DUDt*d,k,(omega*d)^2 all L2/T2). Denominators >=eps>0 (proven by f_noneq acceptance) or include (omega*d)^2>0 at wall, so finite, no log/exp blow-up, bounded or mapped. Signed APG/k-adv give new sign ordering vs unsigned f_noneq/f_accel; d-weighted accel gives curvature vs shear, low correlation to I1/I2. Drop zero-gain features to reduce overfit and free search.",
+            "features": [
+              {
+                "name": "f_apg",
+                "formula": "UgradP / (eps + Umag * gradp_mag)",
+                "rationale": "Signed APG work vs dissipation to separate APG separation (positive) from FPG acceleration/reattachment where SST error flips on worst channel and bumps."
+              },
+              {
+                "name": "f_kadv",
+                "formula": "UgradK / (eps + abs(UgradK))",
+                "rationale": "Signed k-advection vs dissipation to mark non-local transport and reattachment recovery where local-equilibrium SST lags separated shear layer."
+              },
+              {
+                "name": "f_curve",
+                "formula": "DUDt_mag * d / (k + DUDt_mag * d + (omega * d)**2)",
+                "rationale": "Wall-distance-weighted acceleration vs TKE to flag strong curvature and converging acceleration / diverging deceleration distinct from equilibrium shear."
+              }
+            ],
+            "drop": [
+              "f_wall",
+              "f_pgrad",
+              "f_stress"
+            ]
+          }
+        },
+        {
+          "round": 13,
+          "features": [
+            [
+              "f_noneq",
+              "Pk / eps"
+            ],
+            [
+              "f_accel",
+              "DUDt_mag / (DUDt_mag + omega * sqrt(k) + Snorm * Umag)"
+            ],
+            [
+              "f_apg",
+              "UgradP / (eps + Umag * gradp_mag)"
+            ],
+            [
+              "f_kadv",
+              "UgradK / (eps + abs(UgradK))"
+            ],
+            [
+              "f_pgwall",
+              "gradp_mag * d / (k + gradp_mag * d + Umag * Umag)"
+            ],
+            [
+              "f_wdist",
+              "omega * d / (omega * d + sqrt(k) + Umag)"
+            ],
+            [
+              "f_bend",
+              "DUDt_mag * d / (Umag * Umag + DUDt_mag * d + k)"
+            ]
+          ],
+          "accepted": [
+            "f_pgwall",
+            "f_wdist",
+            "f_bend"
+          ],
+          "formula": "((-0.2978)*tanh(5.429*(f_wdist - 0.6267)))*T1 + ((-5)*exp((-5.244)*(f_accel - 0.1102)**2))*T2 + (4.248*exp((-13.51)*(f_noneq - 0.5)**2))*T3",
+          "nodes": 38,
+          "train": 0.4940048206502358,
+          "heldout": {
+            "converging_diverging_channel": 0.5296869784033207,
+            "bump_h26": 0.48204754071757533,
+            "bump_h38": 0.4538888085795788,
+            "converging_diverging_channel_re20580": 0.4221116160557026
+          },
+          "worst_heldout": 0.5296869784033207,
+          "gains": {
+            "f_noneq": 0.013737949433329733,
+            "f_accel": -0.01097555924315019,
+            "f_apg": 0.0,
+            "f_kadv": 0.0,
+            "f_pgwall": 0.0,
+            "f_wdist": -0.0004961375269855184,
+            "f_bend": 0.0
+          },
+          "proposal": {
+            "risk_audit": "All 3 formulas checked dimensionless under V->2V L->3L (all terms L2/T2 or L/T matched) and bounded 0-1 as A/(A+B) so finite except exact wall/stagnation 0/0 <1% points; orderings distinct from I1/I2 (Snorm/omega) and from f_noneq/f_accel magnitude-only; f_pgwall adds magnitude PG vs energy to complement signed f_apg, f_wdist adds near-wall vs free-shear, f_bend adds d/R curvature with Umag scaling to supersede f_curve which uses (omega*d)^2, hence drop f_curve only and retain signed f_apg/f_kadv for APG/FPG sign despite 0 gain to avoid losing sign information for worst converging_diverging_channel.",
+            "features": [
+              {
+                "name": "f_pgwall",
+                "formula": "gradp_mag * d / (k + gradp_mag * d + Umag * Umag)",
+                "rationale": "Wall-scaled pressure force vs kinetic energy to locate APG separation onset and FPG recovery where SST anisotropy fails in diffuser and bumps."
+              },
+              {
+                "name": "f_wdist",
+                "formula": "omega * d / (omega * d + sqrt(k) + Umag)",
+                "rationale": "Wall-distance vs turbulence/mean-flow scales to separate near-wall equilibrium shear from free-shear separated layer."
+              },
+              {
+                "name": "f_bend",
+                "formula": "DUDt_mag * d / (Umag * Umag + DUDt_mag * d + k)",
+                "rationale": "Normalized curvature d/R to flag converging acceleration and diverging curved deceleration on worst channel."
+              }
+            ],
+            "drop": [
+              "f_curve"
+            ]
+          }
+        },
+        {
+          "round": 14,
+          "features": [
+            [
+              "f_noneq",
+              "Pk / eps"
+            ],
+            [
+              "f_curv",
+              "(Wnorm - Snorm) / (Wnorm + Snorm + omega)"
+            ],
+            [
+              "f_apgsh",
+              "UgradP / (k * Snorm + abs(UgradP) + eps)"
+            ],
+            [
+              "f_inert",
+              "DUDt_mag / (DUDt_mag + gradp_mag + omega * sqrt(k))"
+            ]
+          ],
+          "accepted": [
+            "f_curv",
+            "f_apgsh",
+            "f_inert"
+          ],
+          "formula": "(0.2543)*T1 + ((-5.801)*exp((-348.8)*(I1 - 0.01348)**2))*T2 + (4.248*exp((-13.51)*(f_noneq - 0.5)**2))*T3",
+          "nodes": 30,
+          "train": 0.504788629924134,
+          "heldout": {
+            "converging_diverging_channel": 0.5440248387132134,
+            "bump_h26": 0.5015765796327734,
+            "bump_h38": 0.47926246257302973,
+            "converging_diverging_channel_re20580": 0.4342385119949535
+          },
+          "worst_heldout": 0.5440248387132134,
+          "gains": {
+            "f_noneq": 0.03959653018335085,
+            "f_curv": 0.0,
+            "f_apgsh": 0.0,
+            "f_inert": 0.0
+          },
+          "proposal": {
+            "risk_audit": "All 3 proposed ratios verified dimensionless under U->2U, L->3L (all terms scale identically). Denominators contain strictly positive eps or omega or sums ensuring finite except measure-zero stagnation; no duplication of Pk/eps. Risk: curvature and APG features correlate in separation; mitigated by distinct normalizations (omega vs k*Snorm vs omega*sqrt(k)) and bounded mapping; dropping 6 zero/negative-gain features to avoid overfit and free search.",
+            "features": [
+              {
+                "name": "f_curv",
+                "formula": "(Wnorm - Snorm) / (Wnorm + Snorm + omega)",
+                "rationale": "Rotation-minus-strain excess to flag curved shear and rotation-dominated separation vs strain-dominated acceleration in converging-diverging channel."
+              },
+              {
+                "name": "f_apgsh",
+                "formula": "UgradP / (k * Snorm + abs(UgradP) + eps)",
+                "rationale": "Signed APG work vs local shear scale k*Snorm to separate APG separation (positive) from FPG reattachment where SST error flips."
+              },
+              {
+                "name": "f_inert",
+                "formula": "DUDt_mag / (DUDt_mag + gradp_mag + omega * sqrt(k))",
+                "rationale": "Inertia fraction vs pressure plus turbulence to distinguish converging acceleration from APG deceleration non-equilibrium."
+              }
+            ],
+            "drop": [
+              "f_accel",
+              "f_apg",
+              "f_kadv",
+              "f_pgwall",
+              "f_wdist",
+              "f_bend"
+            ]
+          }
+        },
+        {
+          "round": 15,
+          "features": [
+            [
+              "f_noneq",
+              "Pk / eps"
+            ],
+            [
+              "f_apg_d",
+              "UgradP * d / (k * Umag + abs(UgradP * d))"
+            ],
+            [
+              "f_sepwall",
+              "d * Snorm / (Umag + d * Snorm + sqrt(k))"
+            ],
+            [
+              "f_accturb",
+              "DUDt_mag / (DUDt_mag + Snorm * sqrt(k) + Snorm * Umag)"
+            ]
+          ],
+          "accepted": [
+            "f_apg_d",
+            "f_sepwall",
+            "f_accturb"
+          ],
+          "formula": "(0.3435*exp((-14.91)*(f_sepwall - 0.3475)**2))*T1 + ((-4.818)*exp((-6.524)*(f_accturb - 0.1147)**2))*T2 + (4.251*exp((-13.51)*(f_noneq - 0.5)**2))*T3",
+          "nodes": 40,
+          "train": 0.4984402196787229,
+          "heldout": {
+            "converging_diverging_channel": 0.530882957635381,
+            "bump_h26": 0.478420536701309,
+            "bump_h38": 0.4664810242382508,
+            "converging_diverging_channel_re20580": 0.42844925752354596
+          },
+          "worst_heldout": 0.530882957635381,
+          "gains": {
+            "f_noneq": 0.03736894501316884,
+            "f_apg_d": 0.0,
+            "f_sepwall": -0.00040460385960144896,
+            "f_accturb": 0.014121758063472267
+          },
+          "proposal": {
+            "risk_audit": "All 3 formulas unit-checked to L3/T3, L/T, L/T2 ratios so dimensionless under V*2 L*3; bounded [ -1,1] or [0,1] via |X|/(|X|+Y) to stay finite except exact wall 0/0 (<1% points); orderings differ from f_noneq (APG sign*wall distance, low-velocity shear, inertia vs shear) to target converging-diverging 0.544; drop 3 zero-gain features to avoid search dilution.",
+            "features": [
+              {
+                "name": "f_apg_d",
+                "formula": "UgradP * d / (k * Umag + abs(UgradP * d))",
+                "rationale": "Signed APG/FPG work over wall distance vs local advection k*Umag to separate diverging APG separation (+) from converging FPG reattachment where SST error flips."
+              },
+              {
+                "name": "f_sepwall",
+                "formula": "d * Snorm / (Umag + d * Snorm + sqrt(k))",
+                "rationale": "Shear-velocity vs mean-velocity to flag near-wall low-speed separation bubble versus outer free shear in bumps and diffuser."
+              },
+              {
+                "name": "f_accturb",
+                "formula": "DUDt_mag / (DUDt_mag + Snorm * sqrt(k) + Snorm * Umag)",
+                "rationale": "Mean acceleration fraction vs turbulent plus mean shear advection to distinguish converging acceleration non-equilibrium from APG deceleration."
+              }
+            ],
+            "drop": [
+              "f_curv",
+              "f_apgsh",
+              "f_inert"
+            ]
+          }
+        }
+      ],
+      "spent_usd": 0.49310550000000003
+    }
+  },
+  "spent_usd": 0.49310550000000003,
+  "controls": {
+    "invariants": {
+      "formula": "(0.2548)*T1 + ((-5.801)*exp((-348.8)*(I1 - 0.01348)**2))*T2 + (0.7218 + 3.549*exp((-348.8)*(I1 - 0.0454)**2))*T3",
+      "nodes": 33,
+      "curved_step": {
+        "curved_step": 0.7282357475415746
+      }
+    },
+    "standard": {
+      "formula": "(0.2692*exp((-9.96)*(q_ti - 0.005708)**2))*T1 + ((-5.801)*exp((-348.8)*(I1 - 0.01348)**2))*T2 + (5.4*q_lim + (-129.8)*I1*q_ti)*T3",
+      "nodes": 37,
+      "curved_step": {
+        "curved_step": 0.6699431903342054
+      }
+    }
+  }
+}
