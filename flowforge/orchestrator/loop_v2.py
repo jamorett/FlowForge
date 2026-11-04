@@ -29,6 +29,8 @@ from pathlib import Path
 
 import numpy as np
 
+from flowforge.dsl.grammar import MAX_NODES
+
 logger = logging.getLogger(__name__)
 
 POP_K = 8
@@ -172,7 +174,7 @@ def _dispatch(role: str, runtime, context: dict):
     from flowforge.agents.runtime.client import BudgetExceededError
 
     try:
-        return dispatcher.dispatch_role(role, runtime, {**context, "max_nodes": 25},
+        return dispatcher.dispatch_role(role, runtime, {**context, "max_nodes": MAX_NODES},
                                         max_tokens=MAX_COMPLETION_TOKENS)
     except BudgetExceededError:
         raise

@@ -1,0 +1,59 @@
+{
+  "tag": "e6-cap60",
+  "seed": 42,
+  "loop": "v2.1",
+  "max_nodes": 60,
+  "data": "v3",
+  "mode": "frozen",
+  "label": "exploratory",
+  "rounds": 5,
+  "groups": 2,
+  "arms": {
+    "swarm": {
+      "seeds": [
+        {
+          "seed": 42,
+          "metric": 0.7149580607260826,
+          "champion": "(div(881.07,54.4618+I1))*T1 + (div((-432.777),6.34294+90.8951*I1))*T2 + (div(0.106974,0.194341+0.139926*I1))*T3",
+          "expression": "(div(881.07,54.4618+I1))*T1 + (div((-432.777),6.34294+90.8951*I1))*T2 + (div(0.106974,0.194341+0.139926*I1))*T3",
+          "champion_expression": "(div(881.07,54.4618+I1))*T1 + (div((-432.777),6.34294+90.8951*I1))*T2 + (div(0.106974,0.194341+0.139926*I1))*T3",
+          "session": "arms-swarm-v2-s42",
+          "cost": 0.6734,
+          "cost_usd": 0.6734,
+          "dollars_spent": 0.6734,
+          "dry_run": false,
+          "champion_round": 5,
+          "fallback": false,
+          "no_champion": false
+        }
+      ],
+      "summary": null,
+      "dry_run": false,
+      "complete": true
+    },
+    "swarm_no_redteam": {
+      "seeds": [
+        {
+          "seed": 42,
+          "metric": 0.7964737213987563,
+          "champion": "0.118052*T1 + (-1.58847 - 10.5958*tanh(I2))*T2 + (2.72927 - 2.48927*tanh(I1))*T3",
+          "expression": "0.118052*T1 + (-1.58847 - 10.5958*tanh(I2))*T2 + (2.72927 - 2.48927*tanh(I1))*T3",
+          "champion_expression": "0.118052*T1 + (-1.58847 - 10.5958*tanh(I2))*T2 + (2.72927 - 2.48927*tanh(I1))*T3",
+          "session": "arms-swarm_no_redteam-v2-s42",
+          "cost": 0.49329999999999996,
+          "cost_usd": 0.49329999999999996,
+          "dollars_spent": 0.49329999999999996,
+          "dry_run": false,
+          "champion_round": 5,
+          "fallback": false,
+          "no_champion": false
+        }
+      ],
+      "summary": null,
+      "dry_run": false,
+      "complete": true
+    }
+  },
+  "spent_usd": 1.1667,
+  "incomplete": false
+}

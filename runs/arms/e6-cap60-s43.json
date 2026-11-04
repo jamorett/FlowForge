@@ -1,0 +1,59 @@
+{
+  "tag": "e6-cap60",
+  "seed": 43,
+  "loop": "v2.1",
+  "max_nodes": 60,
+  "data": "v3",
+  "mode": "frozen",
+  "label": "exploratory",
+  "rounds": 5,
+  "groups": 2,
+  "arms": {
+    "swarm": {
+      "seeds": [
+        {
+          "seed": 43,
+          "metric": 0.7685144791948452,
+          "champion": "(0.25 - 0.3*tanh((0 - I2)))*T1 + (-2 + 2*tanh(I1) - 0.7*tanh((0 - I2)))*T2 + (2.14162 - 2*tanh(I1))*T3",
+          "expression": "(0.25 - 0.3*tanh((0 - I2)))*T1 + (-2 + 2*tanh(I1) - 0.7*tanh((0 - I2)))*T2 + (2.14162 - 2*tanh(I1))*T3",
+          "champion_expression": "(0.25 - 0.3*tanh((0 - I2)))*T1 + (-2 + 2*tanh(I1) - 0.7*tanh((0 - I2)))*T2 + (2.14162 - 2*tanh(I1))*T3",
+          "session": "arms-swarm-v2-s43",
+          "cost": 0.5369,
+          "cost_usd": 0.5369,
+          "dollars_spent": 0.5369,
+          "dry_run": false,
+          "champion_round": 5,
+          "fallback": false,
+          "no_champion": false
+        }
+      ],
+      "summary": null,
+      "dry_run": false,
+      "complete": true
+    },
+    "swarm_no_redteam": {
+      "seeds": [
+        {
+          "seed": 43,
+          "metric": 0.7622826477462432,
+          "champion": "0.242415*T1 + (-2.00818 + 2.65889*tanh(8.61742*sqrt(I2*I2)))*T2 + div(3.65296, (0.952699 + sqrt(I1*I1)))*T3",
+          "expression": "0.242415*T1 + (-2.00818 + 2.65889*tanh(8.61742*sqrt(I2*I2)))*T2 + div(3.65296, (0.952699 + sqrt(I1*I1)))*T3",
+          "champion_expression": "0.242415*T1 + (-2.00818 + 2.65889*tanh(8.61742*sqrt(I2*I2)))*T2 + div(3.65296, (0.952699 + sqrt(I1*I1)))*T3",
+          "session": "arms-swarm_no_redteam-v2-s43",
+          "cost": 0.44220000000000004,
+          "cost_usd": 0.44220000000000004,
+          "dollars_spent": 0.44220000000000004,
+          "dry_run": false,
+          "champion_round": 3,
+          "fallback": false,
+          "no_champion": false
+        }
+      ],
+      "summary": null,
+      "dry_run": false,
+      "complete": true
+    }
+  },
+  "spent_usd": 0.9791,
+  "incomplete": false
+}

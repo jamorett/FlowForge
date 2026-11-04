@@ -452,3 +452,62 @@ U = 13/25, p = 0.500 (same mean, spread 0.105 → 0.046); vs loop v1 (E3) U = 22
 sparse_baseline U = 0/25 (sparse better on every pair). The v2.1 fixes made later rounds productive
 but did not move the mean on this validation flow. Scripts used for E3–E5 and milestone 1 now live in
 `scripts/` as identical copies (`run_arms_seed.py`, `build_milestone_set.py`, `summarize_data_v3.py`).
+
+## 2026-11-03 — Ceiling of the closure form on curved_step (exploratory, frozen, no API)
+
+Question: is the proposer the bottleneck, or the form? No LLM, no locked data; `scripts/ceiling.py`,
+`scripts/ceiling_check.py`, `scripts/ceiling_realizable.py`; outputs `runs/arms/ceiling-*.json`.
+Data v3 swarm cases were ingested on this machine from `data/raw` (train/redteam only, same
+`ingest_csv` code; no locked case). Train = data-v3 train split, 20000 points per case; curved_step
+scored exactly as the repo scorer (4000 points, seed 0; sparse_v3 champion reproduces 0.7299).
+
+- **Tensor basis is not the limit:** projecting the curved_step target point by point onto
+  T1..T3 leaves ratio 0.0003.
+- **g(I1, I2) fitted on curved_step itself** (cheating bound): kNN 0.20–0.50, smooth library
+  0.34, constant g 0.64.
+- **g(I1, I2) learned from train only:** kNN (K = 50) 0.415, K = 200 0.441; with realizability
+  enforced by shrinking each point's correction until `b_rans + correction` is realizable,
+  0.479 / 0.502. A smooth library (polynomials, tanh, exp, rational; 75 scalar features × T1..T3,
+  ridge) 0.639. Constant g from train 0.866.
+- Same pattern on every held-out case (convdiv ×2, bumps h26/h38, attack hills): train-kNN
+  0.23–0.37 vs the best champions 0.45–0.69.
+
+Reading: the error can still drop by roughly a third below the best champion (0.688 → ~0.48
+realizable), but only with a g(I1, I2) that varies sharply and locally, i.e. a lookup table, not a
+short formula. Within compact formulas the champions (0.69–0.73) are close to a 225-coefficient
+smooth library (0.64), which explains why the proposer (swarm, single LLM, random grammar) does not
+matter: the 25-node, readable-formula requirement is the binding constraint. Leave-one-family-out
+CV of the library is not usable (flat-plate hold-out extrapolates), so the library is reported at
+fixed ridge strengths.
+
+## 2026-11-03 — Medium-size formulas (free probe) and E6, node cap 60 (declared before E6 runs)
+
+Branch `explore/medium-formulas`, exploratory; the main protocol and its 25-node rule are unchanged.
+
+**Free probe** (`scripts/medium_formulas.py`, no API, train-only fit): greedy selection of
+grammar-expressible terms f(I1, I2)·T_k (polynomials, tanh and Gaussian windows at train quantiles,
+div, 2-D windows; 87 features × 3 tensors), node count from the repo parser, curved_step scored as the
+repo scorer. curved_step ratio by size: 25 nodes 0.685, 36 nodes 0.646 (realizable on train and
+curved_step), 46–82 nodes 0.65–0.66, 100 nodes 0.611, 130–450 nodes 0.63–0.64. Closed forms from
+these families plateau near 0.63–0.65, far above the train-kNN ceiling (~0.48 realizable): the rest
+of the headroom needs sharper 2-D structure than short formulas carry. A deterministic greedy search
+already reaches 0.685 at 25 nodes, below the loop-v2 seed mean (0.850 ± 0.105) and sparse (0.748).
+
+**E6:** the E4 stall was mostly candidates over the 25-node cap (26–32 nodes). E6 = loop v2.1
+(prompts `theorist_v2` v3 and `reviser` v3: the cap is read from the context instead of the literal 25)
+with `FLOWFORGE_MAX_NODES=60`, data v3, seeds 42–46, 5 rounds × 2 groups, swarm and
+swarm_no_redteam, `scripts/run_e6.py <seed> e6-cap60 3.0` ($3 cap per seed), outputs
+`runs/arms/e6-cap60-s<seed>.json`, sessions prefixed `e6-cap60-`. Compared descriptively with E5
+(v2.1, cap 25: swarm 0.868 ± 0.046), E4, sparse (0.748) and the free probe (0.646 at 36 nodes).
+The question: with room to grow, does the LLM loop reach the medium-formula plateau reliably?
+
+**E6 result (2026-11-03, exploratory, frozen, `data=v3`, loop v2.1, node cap 60, $5.54,
+`runs/arms/e6-cap60-s4*.json`), `worst_validation_ratio` on `curved_step`:** swarm 0.787 ± 0.095
+(0.715, 0.769, 0.853, 0.914, 0.686), swarm_no_redteam 0.726 ± 0.054 (0.796, 0.762, 0.668, 0.682,
+0.719); every seed has a champion, no fallbacks. Swarm vs swarm_no_redteam U = 18/25, p = 0.31 (exact,
+two-sided). Champion sizes 20–52 nodes (8 of 10 above 25). Vs E5 (cap 25: 0.868 ± 0.046 and
+0.871 ± 0.032; per-seed files are not on this machine, so descriptive only) both arms are lower, and
+5 of 10 seeds beat sparse_baseline (0.748), against 0 of 10 in E5. Best champion 0.668 (35 nodes),
+close to the free greedy probe at the same size (0.646 at 36 nodes). Reading: given room to grow, the
+LLM loop moves toward the medium-formula plateau, but not reliably (spread 0.67–0.91) and not past
+it; the 25-node rule, not the proposer, was the main limit in E4/E5. The main protocol keeps 25 nodes.
