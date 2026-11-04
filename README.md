@@ -185,6 +185,7 @@ On `curved_step`, with the same inputs the agents get (I1, I2, T1..T3):
 | Model | Error ratio |
 |---|---|
 | Best agent closure (loop v2) | 0.688 |
+| Agent loop v2.1 with a 60-node cap (E6, 10 runs): mean / best | 0.756 / 0.668 |
 | Deterministic greedy search, ≤ 25 / 36 / 100–450 nodes | 0.685 / 0.646 / 0.61–0.64 |
 | Non-parametric g(I1, I2) learned from train (k-nearest neighbours), realizability enforced | ≈ 0.48 |
 | Point-by-point projection on T1..T3 (fitted on validation itself: a bound, not a model) | 0.0003 |
@@ -192,7 +193,9 @@ On `curved_step`, with the same inputs the agents get (I1, I2, T1..T3):
 The tensor basis is not the limit, and there is headroom (0.69 → ≈ 0.48), but only for a g(I1, I2) that
 varies sharply, a lookup table rather than a readable formula. Short formulas plateau around 0.63–0.65,
 and a plain greedy search already reaches what the agents find. Scripts: `scripts/ceiling*.py`,
-`scripts/medium_formulas.py`; loop v2.1 with a 60-node cap (E6, `scripts/run_e6.py`) is in decisions.md.
+`scripts/medium_formulas.py`, `scripts/run_e6.py`. With a 60-node cap (E6) the agent loop moves toward
+that plateau (best 0.668 at 35 nodes; 5 of 10 runs beat the sparse baseline 0.748, none did at 25 nodes)
+but not reliably (0.67–0.91): the 25-node rule, not the proposer, was the main limit.
 
 ### 2. Loop v3: the LLM proposes physics, a deterministic search writes the formula
 

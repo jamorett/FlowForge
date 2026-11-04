@@ -1,0 +1,59 @@
+{
+  "tag": "e6-cap60",
+  "seed": 46,
+  "loop": "v2.1",
+  "max_nodes": 60,
+  "data": "v3",
+  "mode": "frozen",
+  "label": "exploratory",
+  "rounds": 5,
+  "groups": 2,
+  "arms": {
+    "swarm": {
+      "seeds": [
+        {
+          "seed": 46,
+          "metric": 0.6861796581627634,
+          "champion": "div(0.5,1.10163-4.86031*I2)*T1 + div(-0.0897819,0.109474+I1)*exp(1*I2)*T2 + div(3.87403,1+I1-3*I2)*T3",
+          "expression": "div(0.5,1.10163-4.86031*I2)*T1 + div(-0.0897819,0.109474+I1)*exp(1*I2)*T2 + div(3.87403,1+I1-3*I2)*T3",
+          "champion_expression": "div(0.5,1.10163-4.86031*I2)*T1 + div(-0.0897819,0.109474+I1)*exp(1*I2)*T2 + div(3.87403,1+I1-3*I2)*T3",
+          "session": "arms-swarm-v2-s46",
+          "cost": 0.6164,
+          "cost_usd": 0.6164,
+          "dollars_spent": 0.6164,
+          "dry_run": false,
+          "champion_round": 5,
+          "fallback": false,
+          "no_champion": false
+        }
+      ],
+      "summary": null,
+      "dry_run": false,
+      "complete": true
+    },
+    "swarm_no_redteam": {
+      "seeds": [
+        {
+          "seed": 46,
+          "metric": 0.7187411014962746,
+          "champion": "0.254219*T1 + div(-0.267441,(0.128964+sqrt(I1)))*T2 + div(1.11276,(0.203366+sqrt(I1)))*(0.563889+0.487559*tanh(div(I2,0.0416163))+0.771999*tanh(div(I1,0.468435)))*T3",
+          "expression": "0.254219*T1 + div(-0.267441,(0.128964+sqrt(I1)))*T2 + div(1.11276,(0.203366+sqrt(I1)))*(0.563889+0.487559*tanh(div(I2,0.0416163))+0.771999*tanh(div(I1,0.468435)))*T3",
+          "champion_expression": "0.254219*T1 + div(-0.267441,(0.128964+sqrt(I1)))*T2 + div(1.11276,(0.203366+sqrt(I1)))*(0.563889+0.487559*tanh(div(I2,0.0416163))+0.771999*tanh(div(I1,0.468435)))*T3",
+          "session": "arms-swarm_no_redteam-v2-s46",
+          "cost": 0.5016,
+          "cost_usd": 0.5016,
+          "dollars_spent": 0.5016,
+          "dry_run": false,
+          "champion_round": 4,
+          "fallback": false,
+          "no_champion": false
+        }
+      ],
+      "summary": null,
+      "dry_run": false,
+      "complete": true
+    }
+  },
+  "spent_usd": 1.1179999999999999,
+  "incomplete": false
+}

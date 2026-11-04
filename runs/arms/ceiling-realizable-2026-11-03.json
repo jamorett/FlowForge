@@ -1,0 +1,14 @@
+{
+  "knn50": {
+    "raw": 0.41453693981945194,
+    "shrunk_to_realizable": 0.4789313255820201,
+    "realizable_after": 1.0,
+    "baseline_realizable": 1.0
+  },
+  "knn200": {
+    "raw": 0.44083267598208653,
+    "shrunk_to_realizable": 0.5020183983259885,
+    "realizable_after": 1.0,
+    "baseline_realizable": 1.0
+  }
+}

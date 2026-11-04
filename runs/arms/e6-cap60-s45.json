@@ -1,0 +1,59 @@
+{
+  "tag": "e6-cap60",
+  "seed": 45,
+  "loop": "v2.1",
+  "max_nodes": 60,
+  "data": "v3",
+  "mode": "frozen",
+  "label": "exploratory",
+  "rounds": 5,
+  "groups": 2,
+  "arms": {
+    "swarm": {
+      "seeds": [
+        {
+          "seed": 45,
+          "metric": 0.913850592385017,
+          "champion": "0.0649344*(2.19952+tanh(div(I1,0.299846)+div(I2,0.288847)))*T1 + 0.609069*tanh(div(I2,0.0407682))*T2 + 0.504767*tanh(div(I1,0.285877))*(1.05245+0.601179*tanh(div(I2,0.0861494)))*T3",
+          "expression": "0.0649344*(2.19952+tanh(div(I1,0.299846)+div(I2,0.288847)))*T1 + 0.609069*tanh(div(I2,0.0407682))*T2 + 0.504767*tanh(div(I1,0.285877))*(1.05245+0.601179*tanh(div(I2,0.0861494)))*T3",
+          "champion_expression": "0.0649344*(2.19952+tanh(div(I1,0.299846)+div(I2,0.288847)))*T1 + 0.609069*tanh(div(I2,0.0407682))*T2 + 0.504767*tanh(div(I1,0.285877))*(1.05245+0.601179*tanh(div(I2,0.0861494)))*T3",
+          "session": "arms-swarm-v2-s45",
+          "cost": 0.5604,
+          "cost_usd": 0.5604,
+          "dollars_spent": 0.5604,
+          "dry_run": false,
+          "champion_round": 5,
+          "fallback": false,
+          "no_champion": false
+        }
+      ],
+      "summary": null,
+      "dry_run": false,
+      "complete": true
+    },
+    "swarm_no_redteam": {
+      "seeds": [
+        {
+          "seed": 45,
+          "metric": 0.6817823040422125,
+          "champion": "(0.284579+1.84645*I2+0.682206*div(I1,1.83205+I1))*T1+(-6.39828-4.38832*I2+5.90519*tanh(10.5932*I1))*T2+(div(1.95477,0.934157+I1)*exp(0.639755+1.62473*I2))*T3",
+          "expression": "(0.284579+1.84645*I2+0.682206*div(I1,1.83205+I1))*T1+(-6.39828-4.38832*I2+5.90519*tanh(10.5932*I1))*T2+(div(1.95477,0.934157+I1)*exp(0.639755+1.62473*I2))*T3",
+          "champion_expression": "(0.284579+1.84645*I2+0.682206*div(I1,1.83205+I1))*T1+(-6.39828-4.38832*I2+5.90519*tanh(10.5932*I1))*T2+(div(1.95477,0.934157+I1)*exp(0.639755+1.62473*I2))*T3",
+          "session": "arms-swarm_no_redteam-v2-s45",
+          "cost": 0.6239,
+          "cost_usd": 0.6239,
+          "dollars_spent": 0.6239,
+          "dry_run": false,
+          "champion_round": 5,
+          "fallback": false,
+          "no_champion": false
+        }
+      ],
+      "summary": null,
+      "dry_run": false,
+      "complete": true
+    }
+  },
+  "spent_usd": 1.1843000000000001,
+  "incomplete": false
+}

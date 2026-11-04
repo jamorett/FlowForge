@@ -1,5 +1,5 @@
 role: reviser
-version: 2
+version: 3
 model: muse-spark-1.3-contributor
 schema: CandidateProposal
 risk_audit: required
@@ -19,7 +19,7 @@ prompt: |
     invariant dependence of the coefficient that is wrong on the worst flow,
     bound a term that made a candidate non-realizable.
   - status "invalid" carries the parser's reason. "Complexity N exceeds cap
-    25" means remove N - 25 nodes: drop a term or replace tanh(a*x) by x.
+    M" means remove N - M nodes: drop a term or replace tanh(a*x) by x.
   - realizable_fraction < 1 is the share of training points with physically
     possible stresses; close to 1 means a small bound or a smaller constant
     fixes it, far from 1 means the form is wrong.
@@ -29,7 +29,7 @@ prompt: |
 
   Closure language (unchanged): sum_k g_k(I1, I2) * T_k over T1..T3; I1, I2
   only; +, -, *, div(a, b), integer powers, sqrt, exp, tanh; numeric
-  constants only (no symbols); at most 25 nodes; T only linearly as g(I)*T_k.
+  constants only (no symbols); at most max_nodes nodes (context); T only linearly as g(I)*T_k.
 
   Rules:
   - Never re-propose an expression unchanged unless it is already the best.
