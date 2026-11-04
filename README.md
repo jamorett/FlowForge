@@ -27,12 +27,13 @@ Every protocol change and every result, wins and losses, is logged in
 2. [Two agent loops](#two-agent-loops)
 3. [Results](#results)
 4. [What we learned](#what-we-learned)
-5. [Limits](#limits-read-before-quoting-a-number)
-6. [The cockpit (screenshots)](#the-cockpit)
-7. [Setup and reproduction](#setup-and-reproduction)
-8. [Repository layout](#repository-layout)
-9. [Guardrails](#guardrails)
-10. [Next steps](#next-steps)
+5. [Follow-up: physics features and 29 hills](#follow-up-physics-features-and-29-hills-exploratory)
+6. [Limits](#limits-read-before-quoting-a-number)
+7. [The cockpit (screenshots)](#the-cockpit)
+8. [Setup and reproduction](#setup-and-reproduction)
+9. [Repository layout](#repository-layout)
+10. [Guardrails](#guardrails)
+11. [Next steps](#next-steps)
 
 ---
 
@@ -170,13 +171,101 @@ on data v2 (RP1 p = 0.155, not replicated; RP2 p = 0.996).
 5. **The red-team screen at ratio 1.0 is too strict** on data v3: the no-red-team arm scored better in
    loop v1.
 
+## Follow-up: physics features and 29 hills (exploratory)
+
+Run after the decision and data-v3 runs, on branches `explore/medium-formulas` and `explore/llm-features`.
+Everything is **frozen a priori and exploratory**, registered in
+[decisions.md](docs/history/decisions.md) before it ran; no locked data was touched. It does not change
+the results above.
+
+### 1. What limits short formulas (no API)
+
+On `curved_step`, with the same inputs the agents get (I1, I2, T1..T3):
+
+| Model | Error ratio |
+|---|---|
+| Best agent closure (loop v2) | 0.688 |
+| Deterministic greedy search, ≤ 25 / 36 / 100–450 nodes | 0.685 / 0.646 / 0.61–0.64 |
+| Non-parametric g(I1, I2) learned from train (k-nearest neighbours), realizability enforced | ≈ 0.48 |
+| Point-by-point projection on T1..T3 (fitted on validation itself: a bound, not a model) | 0.0003 |
+
+The tensor basis is not the limit, and there is headroom (0.69 → ≈ 0.48), but only for a g(I1, I2) that
+varies sharply, a lookup table rather than a readable formula. Short formulas plateau around 0.63–0.65,
+and a plain greedy search already reaches what the agents find. Scripts: `scripts/ceiling*.py`,
+`scripts/medium_formulas.py`; loop v2.1 with a 60-node cap (E6, `scripts/run_e6.py`) is in decisions.md.
+
+### 2. Loop v3: the LLM proposes physics, a deterministic search writes the formula
+
+```
+Physicist (LLM): proposes 1–3 dimensionless flow features + a physical rationale, drops useless ones
+ ▼   (sees: active features and how much each helps on held-out flows, best formula, rejected features)
+Feature check (deterministic): whitelisted primitives (k, ω, ν_t, wall distance, ∇p, P_k, …);
+ ▼   dimensionless test = value unchanged when velocities ×2 and lengths ×3; finite; not constant
+Greedy search (deterministic): best formula sum_k g_k(I1, I2, features)·T_k within 40 nodes, fit on train
+ ▼
+Held-out gain of each feature (search re-run without it) → back to the Physicist
+```
+
+Code: `flowforge/orchestrator/loop_v3.py`, `flowforge/data/feature_dsl.py`, `flowforge/search/omp.py`,
+role `physicist` (`prompts/physicist.yaml`). Controls use the same search with fixed inputs: I1, I2 only
+(**invariants**), or I1, I2 plus 10 textbook features after Ling & Templeton (2015) and Wang et al. (2017)
+(**standard**). All 75 features the LLM proposed in the first 5-round run passed the unit check; P_k/ε
+(non-equilibrium) was proposed independently in every seed. A session costs about $0.15–0.50.
+
+### 3. A fairer validation: 29 parameterized periodic hills
+
+[Xiao et al. (2020)](https://tmbwg.github.io/turbmodels/Other_DNS_Data/parameterized_periodic_hills.html)
+provide 29 DNS at Re_H 5600 (slopes α 0.5–1.5, three lengths, three heights) but no RANS baseline, so it is
+computed here (`flowforge/data/hills29.py`, `scripts/run_hills29.py`): terrain-following mesh from the DNS
+wall, OpenFOAM k-ω SST, DNS interpolated to the RANS cells, same arrays and conventions as the McConkey
+ingest. Check on the classic hill against McConkey's: separation x = 0.98–7.67 vs 0.96–7.59, sparse
+champion ratio 0.674 vs 0.673. Split fixed before any score: 11 validation hills (a Latin square over
+slope × length × height, plus α 0.75 and 1.25), 18 training hills. Data v4 is opt-in:
+`FLOWFORGE_CASES=configs/cases_v4.yaml`.
+
+### Results (≤ 40 nodes, 5 seeds; lower is better)
+
+| Arm | Trained on | `curved_step` | **11 validation hills, mean** |
+|---|---|---|---|
+| Invariants (no LLM) | data v3 | 0.728 | 0.572 |
+| Standard features (no LLM) | data v3 | **0.670** | 0.572 |
+| Loop v3, 5 rounds | data v3 | 0.705 ± 0.012 | 0.574 ± 0.008 |
+| Loop v3, 15 rounds | data v3 | 0.704 ± 0.015 | 0.560 ± 0.022 |
+| Loop v3, 15 rounds, seeded with the standard features | data v3 | 0.692 ± 0.009 | 0.555 ± 0.026 |
+| Invariants (no LLM) | data v4 (+ 18 hills) | 0.767 | 0.571 (worst 0.635) |
+| Standard features (no LLM) | data v4 | 0.771 | 0.529 (worst 0.580) |
+| **Loop v3, 5 rounds** | data v4 | 0.746 ± 0.042 | **0.504 ± 0.036** (0.457–0.556) |
+| Loop v3, 5 rounds, seeded | data v4 | 0.751 ± 0.029 | 0.499 ± 0.037 |
+
+API spend for all loop-v3 runs: about $7.3.
+
+### Key messages
+
+1. **One validation flow was misleading.** Across the 15 loop-v3 sessions trained on data v3, the
+   `curved_step` score is uncorrelated with the 11 hills (Spearman −0.03), while the held-out selection
+   flows predict them (0.59, p = 0.02). The textbook features' advantage on `curved_step` disappears on
+   the hills.
+2. **Inventing formulas, the LLM did not beat classical search; proposing physics, it shows an edge.**
+   Trained with the hills, the LLM's features beat the textbook set on the 11 validation hills in
+   4 of 5 seeds (−5 % on average, best seed −14 %) and beat I1, I2 alone in 5 of 5 (−12 %).
+   **Not yet significant**: one-sided sign test p = 0.19, seed spread (± 0.036) as large as the gap.
+3. **More agent time did not help; a better judge does.** 15 rounds scored the same as 5 on `curved_step`
+   (0.704 vs 0.705). What changed the picture was measuring on 11 flows instead of one.
+4. **Trade-off:** training on the hills makes every arm worse on `curved_step` (≈ 0.75–0.77): the
+   corrections follow the family that dominates the training points.
+
+Follow-up limits: exploratory, after the decision run; the hills' SST baselines are ours (one mesh and
+solver setup, validated on one geometry); realizability is reported, not enforced, in loop v3; 1500 points
+per case on data v4 (memory); controls are single deterministic runs, compared with 5 LLM seeds.
+
 ## Limits (read before quoting a number)
 
 - **Frozen a priori, not solved flow.** The solver oracle gate (`tests/integration/test_solver_oracle.py`)
   is still red: injecting the exact DNS-derived correction moves velocity *away* from DNS (ratio
   1.06–1.08 vs the frozen gate 0.70). Every number here is labelled `frozen`.
 - **One validation flow, one locked flow.** `curved_step` is the only step-like flow; only
-  `square_duct` is ingested in the vault on this machine.
+  `square_duct` is ingested in the vault on this machine. The follow-up adds 11 validation hills and shows
+  that `curved_step` alone does not rank models the way the hills do.
 - **The locked comparison is one champion per approach**, chosen by best validation seed (same rule for
   every approach). On seed averages loop v2 does not beat sparse regression.
 - **Post-hoc items are labelled.** The constant model's form was found after looking at validation.
@@ -244,6 +333,20 @@ python scripts/build_milestone_set.py
 python scripts/evaluate_locked.py --milestone 1 --candidates-file runs/arms/milestone1-candidates.json --reason "..."
 ```
 
+**Follow-up** (loop v3 and the 29 hills; Docker Desktop and the `flowforge-openfoam:local` image for the
+hills):
+
+```bash
+python scripts/featurize_cases.py                   # standard features + primitives -> data/features/ (data-v3 cases)
+# unzip dns-29-periodic-hills.zip (NASA TMR, 1.2 GB) first; ~25 min with 6 parallel SST solves
+python scripts/run_hills29.py path/to/DNS_29_Periodic_Hills
+python scripts/control2_features.py                 # controls, data v3 ($0)
+python scripts/run_loop_v3.py --tag v3 --seeds 42 --rounds 5                       # add --seed-standard --max-features 16 for the seeded arm
+python scripts/eval_hills29_a.py                    # data-v3 arms scored on the 11 validation hills ($0)
+FLOWFORGE_CASES=configs/cases_v4.yaml python scripts/run_loop_v3.py --tag v4 --seeds 42 --rounds 5 --train-points 1500
+python scripts/ceiling.py && python scripts/medium_formulas.py                     # headroom probes ($0)
+```
+
 **Cockpit.**
 
 ```bash
@@ -260,10 +363,12 @@ live round with 2 groups; 5 seeds × 2 swarm arms ≈ $6–7. Mock runs, dry run
 ```text
 flowforge/
   agents/        role dispatcher, prompt loader, Pydantic schemas, model runtime (budget, replay)
-  orchestrator/  round.py (loop v1), loop_v2.py, history.py (session feedback)
+  orchestrator/  round.py (loop v1), loop_v2.py, loop_v3.py (features), history.py (session feedback)
   dsl/           closure grammar, parser (25-node cap), evaluator, constant fitter
+  search/        omp.py: deterministic greedy formula search used by loop v3 and its controls
   physics/       invariants, tensor basis, realizability, frozen-RANS targets
-  data/          CSV ingest, Zarr stores, split guard (locked isolation), frozen-field loading
+  data/          CSV ingest, Zarr stores, split guard (locked isolation), frozen-field loading,
+                 features.py + feature_dsl.py (loop-v3 features), hills29.py (29-hill SST baselines)
   ladder/        rungs, halving, realizability gate
   elegance/      description length, snapping, champion rule
   baselines/     sparse regression baseline
@@ -291,8 +396,9 @@ data/ runs/ scratch/   git-ignored: datasets + locked vault, session outputs, pr
 
 ## Next steps
 
-1. **More geometry families in training**, ideally a second step-like flow, so selection sees the
-   behaviour the validation flow needs.
+1. **More validation flows, then more seeds.** The 11 hills settled the `curved_step` question; the
+   loop-v3 edge over textbook features (4/5 seeds) needs more seeds or a second family of validation
+   flows to become significant, ideally a second step-like flow.
 2. **k-corrective frozen RANS** (SpaRTA's k-equation residual R as a real k source, implicit injection
    of the linear part) so the solver oracle passes and frozen scores can be checked as solved velocity.
 3. **Loop v2 follow-ups**: per-family residuals for the Diagnostician, leave-one-family-out scoring in

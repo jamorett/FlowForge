@@ -452,3 +452,117 @@ U = 13/25, p = 0.500 (same mean, spread 0.105 → 0.046); vs loop v1 (E3) U = 22
 sparse_baseline U = 0/25 (sparse better on every pair). The v2.1 fixes made later rounds productive
 but did not move the mean on this validation flow. Scripts used for E3–E5 and milestone 1 now live in
 `scripts/` as identical copies (`run_arms_seed.py`, `build_milestone_set.py`, `summarize_data_v3.py`).
+
+## 2026-11-03 — Loop v3: the LLM proposes features, a deterministic search writes the formula (declared before running)
+
+Branch `explore/llm-features`, exploratory, `frozen`; v1, v2 and the 25-node main protocol are untouched.
+Motivation: loop v1/v2 seed means trail sparse, random grammar and a deterministic greedy search, so the
+LLM is moved from inventing formulas to proposing physics inputs.
+
+- **Features:** `flowforge/data/features.py` computes, from the raw k-omega SST rows (row-aligned with the
+  processed stores, checked), 10 standard bounded features (after Ling & Templeton 2015, Wang et al. 2017)
+  and 15 dimensional primitives; stored in `data/features/<case>.npz` (not committed). Locked cases are
+  never featurized.
+- **Feature language** (`flowforge/data/feature_dsl.py`): whitelisted primitives and functions; a feature is
+  accepted only if dimensionless (unchanged when velocities ×2 and lengths ×3), finite on ≥ 99 % of train
+  points and not constant; mapped to x / (|x| + median|x|).
+- **Search** (`flowforge/search/omp.py`): greedy forward selection of f(v)·T_k terms (v, v², tanh and
+  Gaussian windows, products with I1, I2), least squares on the data-v3 train split (3000 points per case),
+  largest formula within **40 nodes**. Realizability is reported, not enforced (same for every arm).
+- **Loop v3** (`flowforge/orchestrator/loop_v3.py`, role `physicist`, prompt v1): per round the LLM sees the
+  active features with their held-out gain (search re-run without each), the best formula and its train and
+  held-out (redteam split) ratios, and rejected features with reasons; proposes 1–3 features, may drop
+  some; at most 10 active. Champion = round with the lowest worst held-out ratio; validation never enters
+  any context or selection.
+- **Control 2** (already run, no API, `scripts/control2_features.py`): same search, curved_step at ≤ 40
+  nodes: invariants only (I1, I2) 0.728; I1, I2 + standard features 0.670.
+- **Run:** `scripts/run_loop_v3.py --tag v3 --seeds 42,43,44,45,46 --rounds 5`; output
+  `runs/arms/loop-v3-v3-<seed>.json` (one process per seed). Primary comparison: curved_step of the LLM-feature champion vs control
+  "standard" (0.670) at the same cap; the LLM adds value only if it beats the textbook features.
+  Secondary: LLM + standard features together.
+
+**Loop v3 result (2026-11-03, exploratory, frozen, $0.81, `runs/arms/loop-v3-v3-<seed>.json`, ≤ 40 nodes):**
+curved_step 0.705 ± 0.012 (42: 0.693, 43: 0.695, 44: 0.705, 45: 0.724, 46: 0.706). Better than the
+invariants-only control (0.728) on 5/5 seeds, worse than the standard-features control (0.670) on 5/5.
+LLM + standard features together: 0.703 ± 0.013 (the greedy search picks the LLM features first).
+On the held-out redteam flows used for selection (mean of the 4 ratios) the LLM champions are equal to or
+better than the standard control: 0.460–0.490 vs 0.484 (worst case 0.501–0.545 vs 0.544). All 75 proposed
+features passed the dimensional check; `Pk / eps` (non-equilibrium) was proposed in every seed.
+Reading: the LLM's features are physically sensible and carry information beyond I1, I2, and they match or
+beat the textbook set on the selection flows, but not on curved_step; with one validation flow the
+ranking between feature sets is not settled.
+
+## 2026-11-03 — Loop v3 long runs (declared before running)
+
+Same loop v3, code, prompt (physicist v1), cap (40 nodes), splits and controls as above; seeds 42–46,
+**15 rounds** per session, one process per seed and arm:
+- `v3long`: starts with no features, at most 10 active (as the 5-round run, three times longer);
+- `v3seed`: starts with the 10 standard features active (`--seed-standard`), at most 16; the LLM may add
+  features and drop any, standard ones included. Question: can the LLM improve on the textbook set?
+Outputs `runs/arms/loop-v3-v3long-<seed>.json`, `runs/arms/loop-v3-v3seed-<seed>.json`. Champion = round
+with the lowest worst held-out ratio (validation never used). Note from the dry run: adding two fixed
+features to the standard set moves curved_step from 0.670 to 0.692 at the same cap (the greedy search
+picks terms that fit train better), so more features are not automatically better.
+
+**Long-run result (2026-11-03, exploratory, frozen, $4.88, ≤ 40 nodes, 15 rounds):**
+- `v3long`: curved_step 0.704 ± 0.015 (0.687–0.724), the same as the 5-round run (0.705 ± 0.012); held-out
+  mean of the 4 selection flows 0.461 (5-round 0.474; standard control 0.484).
+- `v3seed`: curved_step 0.692 ± 0.009 (0.684–0.708), worse than the standard set alone (0.670) on 5/5 seeds;
+  held-out mean 0.454, better than the standard control (0.484) on 5/5 seeds. The LLM dropped most standard
+  features in 3 of 5 seeds (1 kept) and kept 8–9 in the other 2.
+Reading: three times more rounds did not move curved_step. Every LLM arm improves the held-out flows it is
+selected on and loses on curved_step, so the selection flows (convdiv, bumps) and the single validation flow
+reward different corrections; with one validation flow it cannot be told which ranking generalizes.
+
+## 2026-11-03 — 29 parameterized hills: baseline built here, split fixed before any score
+
+**Data:** Xiao, Wu, Laizet & Duan (2020), 29 DNS of periodic hills at Re_H 5600 (NASA TMR zip, 1.2 GB,
+`scratch/downloads/hills29/`; no license stated, cite the paper). DNS only, so the k-omega SST baseline is
+computed here (`flowforge/data/hills29.py`): terrain-following mesh from the DNS immersed-boundary wall
+(displaced block mesh, 20 cells per H in x, 80 in y graded to both walls), simpleFoam kOmegaSST, nu = 1/5600,
+forcing for crest bulk velocity 1, low-Re wall conditions, run to residuals 1e-5/1e-6; DNS statistics
+interpolated (linear) onto the RANS cell centres; cells whose stencil touches the solid are dropped. Arrays and
+features use the same code and conventions as the McConkey ingest (checked: gradU_ij = du_i/dx_j,
+eps = 0.09 k omega). Check on the baseline geometry (alpha 1, Lx 9, Ly 3.036) against McConkey's
+`periodic_hill_re5600`: separation x 0.98–7.67 vs 0.96–7.59; sparse_v3 champion ratio 0.674 vs 0.673;
+loop_v2 champion 0.577 vs 0.599. Stores `data/processed/hill29_*`, features `data/features/hill29_*.npz`.
+
+**Split (rule fixed now, before any candidate is scored on these cases):** the 27 grid cases (alpha 0.5/1/1.5
+× three bottom lengths × three heights Ly 2.024/3.036/4.048) are split by a Latin square, one held-out
+(length, height) pair per alpha so each length and each height appears once per alpha; the two interpolation
+slopes alpha 0.75 and 1.25 are held out too. **Validation (11):** alph05-4071-2024, alph05-7071-3036,
+alph05-10071-4048, alph10-6-3036, alph10-9-4048, alph10-12-2024, alph15-7929-4048, alph15-10929-2024,
+alph15-13929-3036, alph075-80355-3036, alph125-99645-3036. **Train (18):** the other grid cases.
+Note: alph05-7071-3036 matches the geometry of the McConkey attack hill alpha 0.5 (a loop-v2 selection case;
+loop v3 does not use attack hills).
+
+**Evaluation plan:**
+(a) no API: re-fit every existing arm exactly as before (data-v3 train) and score it on the 11 validation hills
+(controls invariants and standard, and the champion feature sets of loop v3 `v3`, `v3long`, `v3seed`);
+(b) data v4 = data-v3 train + the 18 train hills: controls and loop v3 (5 rounds, seeds 42–46) re-run.
+Metric per arm: mean and worst ratio over the 11 hills; curved_step reported separately.
+
+**Hills, plan (a) result (no API, `runs/arms/hills29-eval-a.json`; every arm fitted on data-v3 train exactly as
+before, champions rebuilt from saved formulas and checked to reproduce their curved_step to 1e-9):** mean ratio over
+the 11 validation hills (worst in brackets): invariants 0.572 (0.648); standard features 0.572 (0.666); loop v3
+`v3` 0.574 ± 0.008; `v3long` 0.560 ± 0.022 (best seed 0.521); `v3seed` 0.555 ± 0.026 (seeds 42/44 0.526/0.527).
+The standard set's curved_step advantage (0.670 vs 0.728) does not carry to the hills. Across the 15 LLM sessions
+the selection flows' mean predicts the hills' mean (Spearman 0.59, p = 0.020); curved_step predicts neither
+(−0.03 with the hills, −0.04 with the selection flows). curved_step alone was not a representative validation.
+
+**Plan (b) settings:** data v4 (registry `configs/cases_v4.yaml`, opt-in via `FLOWFORGE_CASES`) train = data-v3 train + 18 train hills, 1500 points per case (memory), validation =
+curved_step + 11 hills (reported separately), selection = redteam split (unchanged), 40 nodes, 5 rounds, seeds
+42–46, arms `v4` (no initial features) and `v4seed` (standard set seeded, at most 16). Controls are recomputed
+on the same data inside each run.
+
+**Plan (b) result (2026-11-03, exploratory, frozen, $1.58, `runs/arms/loop-v3-v4*-<seed>.json`, data v4, ≤ 40
+nodes):** mean ratio over the 11 validation hills (worst in brackets). Controls on the same data: invariants
+0.571 (0.635), standard features 0.529 (0.580). Loop v3 `v4` (LLM features only): 0.504 ± 0.036 (42: 0.556,
+43: 0.518, 44: 0.500, 45: 0.457, 46: 0.491), below the standard control in 4/5 seeds and below invariants in
+5/5; worst case below standard in 3/5. `v4seed`: 0.499 ± 0.037 (seed 42 kept the standard set unchanged,
+0.529; three seeds 0.465–0.489; seed 46 0.546). curved_step for every arm trained on v4 is worse than on v3
+(controls 0.767/0.771, `v4` 0.746 ± 0.042): with the hills dominating the training points, the fitted
+corrections suit the hills more than the backward step.
+Reading (exploratory, after the decision run): with 11 validation flows the LLM's physics features beat the
+textbook set on average (−5 %, best seed −14 %), but the 4/5 sign is not significant (one-sided sign test
+p = 0.19) and seed spread (± 0.036) is as large as the gap.

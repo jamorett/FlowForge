@@ -1,0 +1,743 @@
+{
+  "label": "exploratory",
+  "mode": "frozen",
+  "tag": "v4seed",
+  "rounds": 5,
+  "max_nodes": 40,
+  "dry": false,
+  "max_features": 16,
+  "seed_standard": true,
+  "seeds": {
+    "43": {
+      "champion_round": 5,
+      "features": [
+        [
+          "q_qcrit",
+          "(|W|^2 - |S|^2) / (|W|^2 + |S|^2)",
+          "standard feature (Ling & Templeton 2015; Wang et al. 2017)"
+        ],
+        [
+          "q_wall",
+          "x / (1 + x), x = sqrt(k) / (0.09 omega d)",
+          "standard feature (Ling & Templeton 2015; Wang et al. 2017)"
+        ],
+        [
+          "q_pgrad",
+          "U.grad p / (|grad p| |U| + |U.grad p|)",
+          "standard feature (Ling & Templeton 2015; Wang et al. 2017)"
+        ],
+        [
+          "q_tscale",
+          "(k/eps)|S| / (1 + (k/eps)|S|)",
+          "standard feature (Ling & Templeton 2015; Wang et al. 2017)"
+        ],
+        [
+          "q_pnorm",
+          "|grad p| / (|grad p| + |DU/Dt|)",
+          "standard feature (Ling & Templeton 2015; Wang et al. 2017)"
+        ],
+        [
+          "q_curv",
+          "streamline curvature |U U : grad U| / (...)",
+          "standard feature (Ling & Templeton 2015; Wang et al. 2017)"
+        ],
+        [
+          "q_aniso",
+          "|tau - 2/3 k I| / (k + |tau - 2/3 k I|)",
+          "standard feature (Ling & Templeton 2015; Wang et al. 2017)"
+        ],
+        [
+          "q_lim",
+          "nu_t omega / k (SST limiter)",
+          "standard feature (Ling & Templeton 2015; Wang et al. 2017)"
+        ],
+        [
+          "f_accP",
+          "DUDt_mag / (gradp_mag + Umag * Snorm + Umag * Wnorm + Umag * omega)",
+          "Mean inertia vs pressure plus shear/rotation straining; high where convective acceleration and convex curvature break equilibrium at bump crest and CD throat."
+        ],
+        [
+          "f_neqImb",
+          "(Pk - eps) / (abs(Pk) + eps)",
+          "Signed production-minus-dissipation imbalance; >0 non-equilibrium shear layer, <0 decaying recirculation where SST anisotropy fails on bumps."
+        ],
+        [
+          "f_pgWall",
+          "d * gradp_mag / (k + 0.5 * Umag * Umag)",
+          "Clauser-like pressure force times wall distance vs local mean+turbulent kinetic energy; marks APG separation and reattachment on bump_h26/h38."
+        ],
+        [
+          "f_accTke",
+          "DUDt_mag / sqrt(gradp_mag * gradp_mag + omega * omega * k)",
+          "Mean acceleration vs pressure plus turbulent scale omega*sqrt(k); high at bump crest convex acceleration where equilibrium SST breaks."
+        ],
+        [
+          "f_apgPow",
+          "UgradP / (abs(UgradP) + eps + abs(Pk))",
+          "Signed APG power vs local turbulence power; >0 APG separation zone, <0 FPG acceleration over bump crest where SST anisotropy fails."
+        ],
+        [
+          "f_advK",
+          "UgradK / (abs(UgradK) + abs(Pk) + eps)",
+          "Advection of k vs local production/dissipation; marks non-equilibrium transport in separation bubble and reattachment on bump_h26/h38."
+        ],
+        [
+          "f_pShr",
+          "gradp_mag / (gradp_mag + Umag * Snorm + Umag * omega)",
+          "Pressure force vs shear plus turbulent straining; high in APG separation/reattachment, low in attached shear, complementing acceleration features."
+        ]
+      ],
+      "formula": "(0.2924)*T1 + ((-5.946)*exp((-5.282)*(f_accP - 0.05649)**2) + 8.427*tanh(8.239*(q_aniso - 0.3048)))*T2 + ((-5.155)*tanh(3.565*(q_wall - 0.706)))*T3",
+      "nodes": 40,
+      "worst_heldout": 0.593434028231567,
+      "curved_step": {
+        "curved_step": 0.7691802316702884,
+        "hill29_alph05_10071_4048": 0.4187555278940382,
+        "hill29_alph05_4071_2024": 0.5064609799644234,
+        "hill29_alph05_7071_3036": 0.460522686584964,
+        "hill29_alph075_80355_3036": 0.45862914215497413,
+        "hill29_alph10_12_2024": 0.5364037004056806,
+        "hill29_alph10_6_3036": 0.4604865838462175,
+        "hill29_alph10_9_4048": 0.43592506893240796,
+        "hill29_alph125_99645_3036": 0.45581605234546324,
+        "hill29_alph15_10929_2024": 0.5315289623337561,
+        "hill29_alph15_13929_3036": 0.4297783674674392,
+        "hill29_alph15_7929_4048": 0.425195855479179
+      },
+      "llm_plus_standard": {
+        "formula": "(0.3262*exp((-6.713)*(q_ti - 0.0139)**2))*T1 + ((-5.946)*exp((-5.282)*(f_accP - 0.05649)**2) + 8.427*tanh(8.239*(q_aniso - 0.3048)))*T2",
+        "nodes": 39,
+        "curved_step": {
+          "curved_step": 0.8214171207776687,
+          "hill29_alph05_10071_4048": 0.44698653673537336,
+          "hill29_alph05_4071_2024": 0.5221879715244531,
+          "hill29_alph05_7071_3036": 0.4815442794699948,
+          "hill29_alph075_80355_3036": 0.4795147698958474,
+          "hill29_alph10_12_2024": 0.5326966881098799,
+          "hill29_alph10_6_3036": 0.4809730355374926,
+          "hill29_alph10_9_4048": 0.46870876565570907,
+          "hill29_alph125_99645_3036": 0.4794823280817045,
+          "hill29_alph15_10929_2024": 0.5262204024029381,
+          "hill29_alph15_13929_3036": 0.45526659656845014,
+          "hill29_alph15_7929_4048": 0.45937256839715207
+        }
+      },
+      "history": [
+        {
+          "round": 1,
+          "features": [
+            [
+              "q_qcrit",
+              "(|W|^2 - |S|^2) / (|W|^2 + |S|^2)"
+            ],
+            [
+              "q_ti",
+              "k / (0.5 |U|^2 + k)"
+            ],
+            [
+              "q_wall",
+              "x / (1 + x), x = sqrt(k) / (0.09 omega d)"
+            ],
+            [
+              "q_pgrad",
+              "U.grad p / (|grad p| |U| + |U.grad p|)"
+            ],
+            [
+              "q_tscale",
+              "(k/eps)|S| / (1 + (k/eps)|S|)"
+            ],
+            [
+              "q_pnorm",
+              "|grad p| / (|grad p| + |DU/Dt|)"
+            ],
+            [
+              "q_curv",
+              "streamline curvature |U U : grad U| / (...)"
+            ],
+            [
+              "q_conv",
+              "U.grad k / (|U.grad k| + |P_k|)"
+            ],
+            [
+              "q_aniso",
+              "|tau - 2/3 k I| / (k + |tau - 2/3 k I|)"
+            ],
+            [
+              "q_lim",
+              "nu_t omega / k (SST limiter)"
+            ],
+            [
+              "f_noneq",
+              "Pk / eps"
+            ],
+            [
+              "f_apgwork",
+              "UgradP * d / ((Umag * Umag + k) * sqrt(Umag * Umag + k))"
+            ],
+            [
+              "f_accel",
+              "DUDt_mag * d / (Umag * Umag + k)"
+            ]
+          ],
+          "accepted": [
+            "f_noneq",
+            "f_apgwork",
+            "f_accel"
+          ],
+          "formula": "(0.4679*exp((-1.473)*(f_apgwork - 0.008235)**2))*T1 + ((-13.3)*exp((-17.97)*(q_tscale - 0.4436)**2))*T2 + ((-5.153)*tanh(3.565*(q_wall - 0.706)))*T3",
+          "nodes": 38,
+          "train": 0.5437894439519847,
+          "heldout": {
+            "converging_diverging_channel": 0.6237822394902693,
+            "bump_h26": 0.6178324549724269,
+            "bump_h38": 0.547328951715606,
+            "converging_diverging_channel_re20580": 0.5194345068750218
+          },
+          "worst_heldout": 0.6237822394902693,
+          "gains": {
+            "q_qcrit": 0.0,
+            "q_ti": 0.0,
+            "q_wall": 0.05959080757396462,
+            "q_pgrad": 0.0,
+            "q_tscale": 0.0337876329539023,
+            "q_pnorm": 0.0,
+            "q_curv": 0.0,
+            "q_conv": 0.0,
+            "q_aniso": 0.0,
+            "q_lim": 0.0,
+            "f_noneq": 0.0,
+            "f_apgwork": -0.0008323316539038395,
+            "f_accel": 0.0
+          },
+          "proposal": {
+            "risk_audit": "All three are dimensionless by unit check (L-T). Denominators vanish only if Umag=k=0 (wall exact); cell-centre training points have d>0, Umag>0 or k>0 so finite on >>99%; no log/exp blow-up. Ordering differs from q_pgrad/q_pnorm/q_tscale: signed APG work, acceleration magnitude, signed Pk/eps. Risk is Pk/eps correlation with q_tscale (both ~S/omega) and large near-wall values, but median normalization handles scale and heldout bumps/CD-channel need APG/acceleration markers.",
+            "features": [
+              {
+                "name": "f_noneq",
+                "formula": "Pk / eps",
+                "rationale": "Non-equilibrium production-to-dissipation ratio; Pk>>eps in separating shear layers where SST under-predicts anisotropy."
+              },
+              {
+                "name": "f_apgwork",
+                "formula": "UgradP * d / ((Umag * Umag + k) * sqrt(Umag * Umag + k))",
+                "rationale": "Signed pressure work along streamline vs local kinetic energy; >0 marks adverse-pressure-gradient deceleration toward separation."
+              },
+              {
+                "name": "f_accel",
+                "formula": "DUDt_mag * d / (Umag * Umag + k)",
+                "rationale": "Mean acceleration vs local energy; highlights converging/diverging throat and bump curvature where inertia breaks equilibrium."
+              }
+            ],
+            "drop": []
+          }
+        },
+        {
+          "round": 2,
+          "features": [
+            [
+              "q_qcrit",
+              "(|W|^2 - |S|^2) / (|W|^2 + |S|^2)"
+            ],
+            [
+              "q_ti",
+              "k / (0.5 |U|^2 + k)"
+            ],
+            [
+              "q_wall",
+              "x / (1 + x), x = sqrt(k) / (0.09 omega d)"
+            ],
+            [
+              "q_pgrad",
+              "U.grad p / (|grad p| |U| + |U.grad p|)"
+            ],
+            [
+              "q_tscale",
+              "(k/eps)|S| / (1 + (k/eps)|S|)"
+            ],
+            [
+              "q_pnorm",
+              "|grad p| / (|grad p| + |DU/Dt|)"
+            ],
+            [
+              "q_curv",
+              "streamline curvature |U U : grad U| / (...)"
+            ],
+            [
+              "q_conv",
+              "U.grad k / (|U.grad k| + |P_k|)"
+            ],
+            [
+              "q_aniso",
+              "|tau - 2/3 k I| / (k + |tau - 2/3 k I|)"
+            ],
+            [
+              "q_lim",
+              "nu_t omega / k (SST limiter)"
+            ],
+            [
+              "f_noneq",
+              "Pk / eps"
+            ],
+            [
+              "f_accel",
+              "DUDt_mag * d / (Umag * Umag + k)"
+            ],
+            [
+              "f_pgwork",
+              "UgradP / (k * Snorm + eps)"
+            ],
+            [
+              "f_inert",
+              "DUDt_mag / (Wnorm * Umag + omega * sqrt(k) + gradp_mag)"
+            ],
+            [
+              "f_kconv",
+              "UgradK / (abs(Pk) + eps)"
+            ]
+          ],
+          "accepted": [
+            "f_pgwork",
+            "f_inert",
+            "f_kconv"
+          ],
+          "formula": "(0.3265*exp((-6.713)*(q_ti - 0.0139)**2))*T1 + ((-13.3)*exp((-17.97)*(q_tscale - 0.4436)**2))*T2 + ((-5.156)*tanh(3.565*(q_wall - 0.706)))*T3",
+          "nodes": 38,
+          "train": 0.5467329286360015,
+          "heldout": {
+            "converging_diverging_channel": 0.617490821973223,
+            "bump_h26": 0.6236873364649459,
+            "bump_h38": 0.5490721874678753,
+            "converging_diverging_channel_re20580": 0.5147984805316647
+          },
+          "worst_heldout": 0.6236873364649459,
+          "gains": {
+            "q_qcrit": 0.0,
+            "q_ti": 0.011229105296140518,
+            "q_wall": 0.05966947363648789,
+            "q_pgrad": 0.0,
+            "q_tscale": 0.013360609646174582,
+            "q_pnorm": 0.0,
+            "q_curv": 0.0,
+            "q_conv": 0.0,
+            "q_aniso": 0.0,
+            "q_lim": 0.0,
+            "f_noneq": 0.0,
+            "f_accel": 0.0,
+            "f_pgwork": 0.0,
+            "f_inert": 0.0,
+            "f_kconv": 0.0
+          },
+          "proposal": {
+            "risk_audit": "All 3 are dimensionless (L2/T3 over L2/T3; L/T2 over L/T2); denominators use eps>0 or gradp_mag+turb scales so finite except exact wall 0/0 (<1% as with f_noneq); ordering-only mapping avoids scale risk; distinct from q_wall/q_tscale (APG work, inertia-vs-rotation, k-transport) to avoid collinearity; drop f_apgwork which is used but heldout-negative.",
+            "features": [
+              {
+                "name": "f_pgwork",
+                "formula": "UgradP / (k * Snorm + eps)",
+                "rationale": "Signed pressure work vs local shear-turbulence scale; >0 marks APG deceleration feeding separation where SST anisotropy is wrong."
+              },
+              {
+                "name": "f_inert",
+                "formula": "DUDt_mag / (Wnorm * Umag + omega * sqrt(k) + gradp_mag)",
+                "rationale": "Mean inertia vs rotation-turbulence-pressure acceleration; highlights bump-crest convex curvature and CD-channel throat where equilibrium breaks."
+              },
+              {
+                "name": "f_kconv",
+                "formula": "UgradK / (abs(Pk) + eps)",
+                "rationale": "Convection of k vs local production+dissipation; marks non-equilibrium history in separating shear layer and reattachment."
+              }
+            ],
+            "drop": [
+              "f_apgwork"
+            ]
+          }
+        },
+        {
+          "round": 3,
+          "features": [
+            [
+              "q_qcrit",
+              "(|W|^2 - |S|^2) / (|W|^2 + |S|^2)"
+            ],
+            [
+              "q_ti",
+              "k / (0.5 |U|^2 + k)"
+            ],
+            [
+              "q_wall",
+              "x / (1 + x), x = sqrt(k) / (0.09 omega d)"
+            ],
+            [
+              "q_pgrad",
+              "U.grad p / (|grad p| |U| + |U.grad p|)"
+            ],
+            [
+              "q_tscale",
+              "(k/eps)|S| / (1 + (k/eps)|S|)"
+            ],
+            [
+              "q_pnorm",
+              "|grad p| / (|grad p| + |DU/Dt|)"
+            ],
+            [
+              "q_curv",
+              "streamline curvature |U U : grad U| / (...)"
+            ],
+            [
+              "q_conv",
+              "U.grad k / (|U.grad k| + |P_k|)"
+            ],
+            [
+              "q_aniso",
+              "|tau - 2/3 k I| / (k + |tau - 2/3 k I|)"
+            ],
+            [
+              "q_lim",
+              "nu_t omega / k (SST limiter)"
+            ],
+            [
+              "f_apgP",
+              "UgradP * omega / (gradp_mag * gradp_mag + k * Snorm * omega + eps * omega)"
+            ],
+            [
+              "f_accP",
+              "DUDt_mag / (gradp_mag + Umag * Snorm + Umag * Wnorm + Umag * omega)"
+            ],
+            [
+              "f_shrEx",
+              "(Snorm - Wnorm) * k / (eps + gradp_mag * gradp_mag / omega)"
+            ]
+          ],
+          "accepted": [
+            "f_apgP",
+            "f_accP",
+            "f_shrEx"
+          ],
+          "formula": "(0.3721*exp((-1.465)*(f_shrEx - 0.02075)**2))*T1 + ((-5.946)*exp((-5.282)*(f_accP - 0.05649)**2) + 8.427*tanh(8.239*(q_aniso - 0.3048)))*T2",
+          "nodes": 39,
+          "train": 0.5227816650571437,
+          "heldout": {
+            "converging_diverging_channel": 0.4755019270846349,
+            "bump_h26": 0.7032803972340768,
+            "bump_h38": 0.7224642187847395,
+            "converging_diverging_channel_re20580": 0.3910921209907156
+          },
+          "worst_heldout": 0.7224642187847395,
+          "gains": {
+            "q_qcrit": 0.0,
+            "q_ti": 0.0,
+            "q_wall": 0.0,
+            "q_pgrad": 0.0,
+            "q_tscale": 0.0,
+            "q_pnorm": 0.0,
+            "q_curv": 0.0,
+            "q_conv": 0.0,
+            "q_aniso": 0.03829055929387981,
+            "q_lim": 0.0,
+            "f_apgP": 0.0,
+            "f_accP": 0.002949476608349655,
+            "f_shrEx": 0.00021903978462400886
+          },
+          "proposal": {
+            "risk_audit": "All 3 formulas are dimensionally homogeneous (L/T powers cancel) so invariant to velocity x2/length x3; denominators are sums of non-negative terms with a wall-finite pressure term gradp^2/omega or gradp_mag to stay >0 at wall where k,Umag,nut,d,eps vanish, ensuring >99% finite; orderings differ from q_ti/q_wall/q_tscale and q_qcrit/q_pgrad (signed APG, inertia-vs-pressure, strain-excess x timescale) to target bump_h26 and CD-channel separation/curvature; risk is isolated 0/0 where gradp=0 and turbulence vanishes, expected <1% points.",
+            "features": [
+              {
+                "name": "f_apgP",
+                "formula": "UgradP * omega / (gradp_mag * gradp_mag + k * Snorm * omega + eps * omega)",
+                "rationale": "Signed APG power vs pressure-gradient plus turbulence scales; >0 marks APG deceleration feeding bump and CD-channel separation where SST anisotropy is wrong."
+              },
+              {
+                "name": "f_accP",
+                "formula": "DUDt_mag / (gradp_mag + Umag * Snorm + Umag * Wnorm + Umag * omega)",
+                "rationale": "Mean inertia vs pressure plus shear/rotation straining; high where convective acceleration and convex curvature break equilibrium at bump crest and CD throat."
+              },
+              {
+                "name": "f_shrEx",
+                "formula": "(Snorm - Wnorm) * k / (eps + gradp_mag * gradp_mag / omega)",
+                "rationale": "Excess strain over rotation scaled by k/eps with pressure safeguard; positive in separating shear layers, negative in recirculation where SST mis-predicts stress."
+              }
+            ],
+            "drop": [
+              "f_noneq",
+              "f_accel",
+              "f_pgwork",
+              "f_inert",
+              "f_kconv"
+            ]
+          }
+        },
+        {
+          "round": 4,
+          "features": [
+            [
+              "q_qcrit",
+              "(|W|^2 - |S|^2) / (|W|^2 + |S|^2)"
+            ],
+            [
+              "q_wall",
+              "x / (1 + x), x = sqrt(k) / (0.09 omega d)"
+            ],
+            [
+              "q_pgrad",
+              "U.grad p / (|grad p| |U| + |U.grad p|)"
+            ],
+            [
+              "q_tscale",
+              "(k/eps)|S| / (1 + (k/eps)|S|)"
+            ],
+            [
+              "q_pnorm",
+              "|grad p| / (|grad p| + |DU/Dt|)"
+            ],
+            [
+              "q_curv",
+              "streamline curvature |U U : grad U| / (...)"
+            ],
+            [
+              "q_aniso",
+              "|tau - 2/3 k I| / (k + |tau - 2/3 k I|)"
+            ],
+            [
+              "q_lim",
+              "nu_t omega / k (SST limiter)"
+            ],
+            [
+              "f_accP",
+              "DUDt_mag / (gradp_mag + Umag * Snorm + Umag * Wnorm + Umag * omega)"
+            ],
+            [
+              "f_shrEx",
+              "(Snorm - Wnorm) * k / (eps + gradp_mag * gradp_mag / omega)"
+            ],
+            [
+              "f_neqImb",
+              "(Pk - eps) / (abs(Pk) + eps)"
+            ],
+            [
+              "f_pgWall",
+              "d * gradp_mag / (k + 0.5 * Umag * Umag)"
+            ],
+            [
+              "f_accTke",
+              "DUDt_mag / sqrt(gradp_mag * gradp_mag + omega * omega * k)"
+            ]
+          ],
+          "accepted": [
+            "f_neqImb",
+            "f_pgWall",
+            "f_accTke"
+          ],
+          "formula": "(0.3721*exp((-1.465)*(f_shrEx - 0.02075)**2))*T1 + ((-5.946)*exp((-5.282)*(f_accP - 0.05649)**2) + 8.427*tanh(8.239*(q_aniso - 0.3048)))*T2",
+          "nodes": 39,
+          "train": 0.5227816650571437,
+          "heldout": {
+            "converging_diverging_channel": 0.4755019270846349,
+            "bump_h26": 0.7032803972340768,
+            "bump_h38": 0.7224642187847395,
+            "converging_diverging_channel_re20580": 0.3910921209907156
+          },
+          "worst_heldout": 0.7224642187847395,
+          "gains": {
+            "q_qcrit": 0.0,
+            "q_wall": 0.0,
+            "q_pgrad": 0.0,
+            "q_tscale": 0.0,
+            "q_pnorm": 0.0,
+            "q_curv": 0.0,
+            "q_aniso": 0.04290884708058229,
+            "q_lim": 0.0,
+            "f_accP": 0.002949476608349655,
+            "f_shrEx": -0.04822132855572503,
+            "f_neqImb": 0.0,
+            "f_pgWall": 0.0,
+            "f_accTke": 0.0
+          },
+          "proposal": {
+            "risk_audit": "All 3 proposed features are dimensionless by power counting (V-scale 2, L-scale 3 invariant). f_neqImb bounded in [-1,1] with denom abs(Pk)+eps>0 except both zero, finite everywhere. f_pgWall = d|grad p|/(k+0.5U^2) is Clauser-like, 0 at wall, singular only at exact wall where k=U=0 (cell-centers finite, <1% risk). f_accTke uses sqrt(gradp^2+omega^2 k) safeguard so zero only if gradp=k=0 simultaneously (freestream/wall, minority); targets bump crest acceleration where gradp>0 so finite. Ordering distinct from q_pgrad/q_tscale/f_accP: adds eps-normalized APG, kinetic-energy-normalized PG wall effect, and turbulence-scale-normalized acceleration. No log/exp blow-up, no constant, collinearity partial but complementary normalizations for bump_h26/h38 separation.",
+            "features": [
+              {
+                "name": "f_neqImb",
+                "formula": "(Pk - eps) / (abs(Pk) + eps)",
+                "rationale": "Signed production-minus-dissipation imbalance; >0 non-equilibrium shear layer, <0 decaying recirculation where SST anisotropy fails on bumps."
+              },
+              {
+                "name": "f_pgWall",
+                "formula": "d * gradp_mag / (k + 0.5 * Umag * Umag)",
+                "rationale": "Clauser-like pressure force times wall distance vs local mean+turbulent kinetic energy; marks APG separation and reattachment on bump_h26/h38."
+              },
+              {
+                "name": "f_accTke",
+                "formula": "DUDt_mag / sqrt(gradp_mag * gradp_mag + omega * omega * k)",
+                "rationale": "Mean acceleration vs pressure plus turbulent scale omega*sqrt(k); high at bump crest convex acceleration where equilibrium SST breaks."
+              }
+            ],
+            "drop": [
+              "f_apgP",
+              "q_ti",
+              "q_conv"
+            ]
+          }
+        },
+        {
+          "round": 5,
+          "features": [
+            [
+              "q_qcrit",
+              "(|W|^2 - |S|^2) / (|W|^2 + |S|^2)"
+            ],
+            [
+              "q_wall",
+              "x / (1 + x), x = sqrt(k) / (0.09 omega d)"
+            ],
+            [
+              "q_pgrad",
+              "U.grad p / (|grad p| |U| + |U.grad p|)"
+            ],
+            [
+              "q_tscale",
+              "(k/eps)|S| / (1 + (k/eps)|S|)"
+            ],
+            [
+              "q_pnorm",
+              "|grad p| / (|grad p| + |DU/Dt|)"
+            ],
+            [
+              "q_curv",
+              "streamline curvature |U U : grad U| / (...)"
+            ],
+            [
+              "q_aniso",
+              "|tau - 2/3 k I| / (k + |tau - 2/3 k I|)"
+            ],
+            [
+              "q_lim",
+              "nu_t omega / k (SST limiter)"
+            ],
+            [
+              "f_accP",
+              "DUDt_mag / (gradp_mag + Umag * Snorm + Umag * Wnorm + Umag * omega)"
+            ],
+            [
+              "f_neqImb",
+              "(Pk - eps) / (abs(Pk) + eps)"
+            ],
+            [
+              "f_pgWall",
+              "d * gradp_mag / (k + 0.5 * Umag * Umag)"
+            ],
+            [
+              "f_accTke",
+              "DUDt_mag / sqrt(gradp_mag * gradp_mag + omega * omega * k)"
+            ],
+            [
+              "f_apgPow",
+              "UgradP / (abs(UgradP) + eps + abs(Pk))"
+            ],
+            [
+              "f_advK",
+              "UgradK / (abs(UgradK) + abs(Pk) + eps)"
+            ],
+            [
+              "f_pShr",
+              "gradp_mag / (gradp_mag + Umag * Snorm + Umag * omega)"
+            ]
+          ],
+          "accepted": [
+            "f_apgPow",
+            "f_advK",
+            "f_pShr"
+          ],
+          "formula": "(0.2924)*T1 + ((-5.946)*exp((-5.282)*(f_accP - 0.05649)**2) + 8.427*tanh(8.239*(q_aniso - 0.3048)))*T2 + ((-5.155)*tanh(3.565*(q_wall - 0.706)))*T3",
+          "nodes": 40,
+          "train": 0.4896651140712224,
+          "heldout": {
+            "converging_diverging_channel": 0.5532760701805353,
+            "bump_h26": 0.593434028231567,
+            "bump_h38": 0.5158030728045517,
+            "converging_diverging_channel_re20580": 0.43694017865461254
+          },
+          "worst_heldout": 0.593434028231567,
+          "gains": {
+            "q_qcrit": 0.0,
+            "q_wall": 0.04816445560528493,
+            "q_pgrad": 0.0,
+            "q_tscale": 0.0,
+            "q_pnorm": 0.0,
+            "q_curv": 0.0,
+            "q_aniso": 0.043186075015292924,
+            "q_lim": 0.0,
+            "f_accP": 0.05886553632392566,
+            "f_neqImb": 0.0,
+            "f_pgWall": 0.0,
+            "f_accTke": 0.0,
+            "f_apgPow": 0.0,
+            "f_advK": 0.0,
+            "f_pShr": 0.0
+          },
+          "proposal": {
+            "risk_audit": "All 3 formulas are dimensionless by L-T check (L2/T3 over L2/T3; L/T2 over L/T2); denominators are sums of non-negative magnitudes with eps>0 away from wall so finite on >99% points; bounded in [-1,1]/[0,1] so no blow-up; ordering differs from q_pgrad/q_wall/f_neqImb/f_accP (magnitude vs direction, advection vs local imbalance, pressure vs shear); drop f_shrEx which has negative heldout_gain and harms bumps.",
+            "features": [
+              {
+                "name": "f_apgPow",
+                "formula": "UgradP / (abs(UgradP) + eps + abs(Pk))",
+                "rationale": "Signed APG power vs local turbulence power; >0 APG separation zone, <0 FPG acceleration over bump crest where SST anisotropy fails."
+              },
+              {
+                "name": "f_advK",
+                "formula": "UgradK / (abs(UgradK) + abs(Pk) + eps)",
+                "rationale": "Advection of k vs local production/dissipation; marks non-equilibrium transport in separation bubble and reattachment on bump_h26/h38."
+              },
+              {
+                "name": "f_pShr",
+                "formula": "gradp_mag / (gradp_mag + Umag * Snorm + Umag * omega)",
+                "rationale": "Pressure force vs shear plus turbulent straining; high in APG separation/reattachment, low in attached shear, complementing acceleration features."
+              }
+            ],
+            "drop": [
+              "f_shrEx"
+            ]
+          }
+        }
+      ],
+      "spent_usd": 0.16620700000000002
+    }
+  },
+  "spent_usd": 0.16620700000000002,
+  "controls": {
+    "invariants": {
+      "formula": "(0.2922)*T1 + ((-5.856)*exp((-948.6)*(I1 - 0.03182)**2))*T2 + (0.7221 + 2.129*exp((-948.6)*(I1 - 0.05171)**2))*T3",
+      "nodes": 33,
+      "curved_step": {
+        "curved_step": 0.7671048992953129,
+        "hill29_alph05_10071_4048": 0.5295898021972588,
+        "hill29_alph05_4071_2024": 0.6156021876237912,
+        "hill29_alph05_7071_3036": 0.5724400493368216,
+        "hill29_alph075_80355_3036": 0.5700785843694214,
+        "hill29_alph10_12_2024": 0.6351401315325357,
+        "hill29_alph10_6_3036": 0.554110476174686,
+        "hill29_alph10_9_4048": 0.5465404277471555,
+        "hill29_alph125_99645_3036": 0.5622038525467575,
+        "hill29_alph15_10929_2024": 0.6313914415396957,
+        "hill29_alph15_13929_3036": 0.5436006626742157,
+        "hill29_alph15_7929_4048": 0.5249204032218314
+      }
+    },
+    "standard": {
+      "formula": "(0.3265*exp((-6.713)*(q_ti - 0.0139)**2))*T1 + ((-13.3)*exp((-17.97)*(q_tscale - 0.4436)**2))*T2 + ((-5.156)*tanh(3.565*(q_wall - 0.706)))*T3",
+      "nodes": 38,
+      "curved_step": {
+        "curved_step": 0.7710257447689576,
+        "hill29_alph05_10071_4048": 0.4950813816064892,
+        "hill29_alph05_4071_2024": 0.5698210526252467,
+        "hill29_alph05_7071_3036": 0.5276692672289613,
+        "hill29_alph075_80355_3036": 0.5316942196314661,
+        "hill29_alph10_12_2024": 0.5732238948516084,
+        "hill29_alph10_6_3036": 0.509267395395594,
+        "hill29_alph10_9_4048": 0.516230201147577,
+        "hill29_alph125_99645_3036": 0.5275605485403194,
+        "hill29_alph15_10929_2024": 0.5803951798096478,
+        "hill29_alph15_13929_3036": 0.49745140190274234,
+        "hill29_alph15_7929_4048": 0.4914752652612943
+      }
+    }
+  }
+}

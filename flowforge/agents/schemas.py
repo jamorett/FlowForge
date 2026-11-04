@@ -78,6 +78,20 @@ class CompositionPlan(_RoleOutput):
     gates: list[dict]
 
 
+class FeatureSpec(BaseModel):
+    """One scalar flow feature proposed by the loop-v3 physicist."""
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=3, max_length=40)
+    formula: str = Field(min_length=1, max_length=300)
+    rationale: str = Field(min_length=1)
+
+
+class FeatureProposal(_RoleOutput):
+    features: list[FeatureSpec] = Field(min_length=1, max_length=3)
+    drop: list[str] = Field(default_factory=list)
+
+
 ROLE_SCHEMAS: dict[str, type[BaseModel]] = {
     "board": RoundPlan,
     "theorist": CandidateProposal,
@@ -90,4 +104,6 @@ ROLE_SCHEMAS: dict[str, type[BaseModel]] = {
     "diagnostician": AnalysisReport,
     "theorist_v2": CandidateProposal,
     "reviser": CandidateProposal,
+    # loop v3 (flowforge/orchestrator/loop_v3.py): the LLM proposes features, not formulas
+    "physicist": FeatureProposal,
 }

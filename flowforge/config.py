@@ -12,6 +12,7 @@ be the repo root, a ``configs/`` directory, or the YAML file itself
 from __future__ import annotations
 
 import math
+import os
 from pathlib import Path
 from typing import Any
 
@@ -159,6 +160,8 @@ def load_cases(root: Path | str | None = None) -> dict[str, Any]:
     ``nasa_wall_mounted_hump``; either case appearing under any other
     split (in particular ``train``) raises :class:`ValueError`.
     """
+    if root is None and os.environ.get("FLOWFORGE_CASES"):
+        root = os.environ["FLOWFORGE_CASES"]  # opt-in alternative registry, e.g. configs/cases_v4.yaml
     path = _resolve_config(root, "cases.yaml")
     data = _load_yaml(path, "cases")
     _require_keys(data, ("cases",), "cases", path)
